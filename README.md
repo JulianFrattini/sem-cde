@@ -1,2 +1,10 @@
-# b4c
-Replication package for the study of Bayesian Data Analysis for Crossover-Design Experiments
+# Bayesian Data Analysis for Crossover-Design Experiments
+
+This repository contains the replication package of the study, where we investigate how Bayesian data analysis (including Bayesian modeling) can address threats to validity of experiments using a crossover design at analysis time.
+
+## Structure
+
+This repository contains the following items:
+
+* src/ : directory for all code and scripts
+  * `simulation.Rmd` : simulation of our hypotheses with a synthetic data set

@@ -1,0 +1,245 @@
+---
+title: "Simulation"
+author: "Julian Frattini"
+date: '2024-03-08'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(brms)
+library(broom.mixed)
+library(janitor)
+library(tidybayes)
+library(marginaleffects)
+
+set.seed(44)
+```
+
+In this notebook, we perform a simulation of our assumptions to demonstrate the capability of a Bayesian model to recover the strength of effects causing the observed data.
+
+## Data synthesis
+
+Firstly, we synthesize a data set in which we know the effect of certain variables on our response variable.
+We determine $n=50$ participants and assume a $2\times2$ factorial crossover design.
+This means, the synthesized data set simulates an experiment with 2 levels of the main factor (i.e., baseline and treatment) administered to every participant in 2 periods.
+
+```{r constants}
+# number of hypothesized participants in the experiment
+n.participants <- 50
+
+# number of periods
+n.periods <- 2
+periods <- data.frame(
+  period = seq(1, n.periods)
+)
+```
+
+Next, we determine the strength of the effect that each variable has on the response variable.
+To avoid researcher bias, we randomly sample these effect strength values from a random distribution $\mathcal{N}(0, 1)$.
+
+```{r effects}
+effects <- rnorm(6, 0, 1)
+
+e.baseline <- effects[1]
+e.treatment <- effects[2]
+e.skill <- effects[3]
+e.crossover.AB <- effects[4] # baseline -> treatment
+e.crossover.BA <- effects[5] # treatment -> baseline
+e.learning <- effects[6]
+```
+
+```{r effects-output}
+data.frame(
+  Effect = c("Baseline (Intercept)", "Treatment", "Individual skill", "Crossover Effect (AB)", "Crossover Effect (BA)", "Learning Effect"),
+  Strength = c(e.baseline, e.treatment, e.skill, e.crossover.AB, e.crossover.BA, e.learning)
+) %>% knitr::kable("simple")
+```
+
+We construct a data frame of participants, consisting of their ID, a randomly assigned skill value (also $\mathcal{N}(0, 1)$) representing their inherent capability, and an assignment to a experimental group (either AB (`group=1`), which receives the treatment in period 2, or group BA (`group=2`), which receives the treatment in period 1).
+The two variables of participants that influence the response variable (group and skill) are not correlated.
+
+```{r data-participants}
+# generate IDs for each participant
+participants.id <- seq(1, n.participants)
+
+# randomly assign a "skill" value to each participant
+participants.skill <- rnorm(n.participants, 0, 1)
+
+# assemple a data frame of participants
+participants <- data.frame(
+  PID = participants.id,
+  skill = participants.skill,
+  group = rep(c(1, 2), n.participants/2) # assignment of participants to groups
+)
+```
+
+Finally, we generate synthetic values of the `response` variable according to our causal model.
+This means, the response variable is calculated via random draws from a normal distribution where the mean $\mu$ is calculated via all causal variables according to their respective effect strength.
+We set the standard deviation $\sigma$ to 0.3, which introduces slight variation around the calculated values.
+
+```{r data-response}
+observations <- participants %>% 
+  cross_join(periods) %>% 
+  mutate(treatment = (group!=period)) %>% 
+  mutate(
+    response = rnorm(n.participants*n.periods, 
+                     e.baseline + e.treatment*treatment + e.learning*(period-1) + e.skill*skill + e.crossover.AB*(period-1)*(abs(group-2)) + e.crossover.BA*(period-1)*(group-1),
+                     0.3)
+  )
+```
+
+## Data Analysis
+
+Now, we analyze the data with our proposed approach.
+
+### Formula and Priors
+
+We define a linear model that determines the `response` variable in relation to the causally related variables.
+The formula consists of the following terms:
+
+| Term | Variable | Meaning |
+|---|---|---|
+| `1` | Intercept | Fixed effect (population-wise) on the response variable |
+| `treatment` | Treatment | Effect of the treatment |
+| `period` | Learning | Effect of repeating the experimental task |
+| `treatment*period` | Carryover | Effect of administering the treatment in period 1 on period 2 |
+| `(1|PID)` | Skill | Random effect (group-wise) of the capability of each participant |
+
+The `treatment` and `period` term are added automatically via the `treatment*period` interaction.
+
+```{r formula}
+f1 <- response ~ 1 + treatment*period + (1|PID)
+
+get_prior(f1, data=observations, family=gaussian)
+```
+
+We select uninformative priors, which are mainly normal distributions centered around the mean 0 ($\mathcal{N}(0, 1)$).
+This ensures that we introduce no bias to the resulting posterior predictions.
+
+```{r priors}
+priors1 <- c(
+  prior(normal(0, 1), class=Intercept),
+  prior(normal(0, 1), class=b)
+)
+```
+
+We sample draws directly from the priors (i.e., sample without the model updating its parameter distributions based on the observed data) to evaluate the feasibility of the priors. 
+
+```{r model-priors}
+m1.prior <-
+  brm(data = observations, family = gaussian, f1, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only"
+  )
+```
+
+With the samples from the prior distributions, we conduct a prior predictive check to ensure that the priors are appropriate, i.e., the actual observations are realistic given the prior knowledge of the model.
+
+```{r prior-predictive-check}
+ndraws <- 100
+
+brms::pp_check(m1.prior, ndraws=ndraws)
+```
+
+The distribution of draws encompasses the actually observed data, meaning that the actual observations lie within the realm of belief defined by the priors. We accept our priors as feasible.
+
+### Model Training
+
+With the appropriateness of priors confirmed, we train the model on the actual data.
+
+```{r model}
+m1 <-
+  brm(data = observations, family = gaussian, f1, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4
+  )
+```
+
+Again, we perform a posterior predictive check to ensure that the predictions of the model are feasible.
+
+```{r posterior-predictive-check}
+brms::pp_check(m1, ndraws=ndraws)
+```
+
+### Model Evaluation
+
+Finally, we evaluate the model
+
+#### Coefficients
+
+First, we investigate the coefficients to see how well they align with the effect strength that we determined before.
+
+```{r summary}
+summary(m1)
+```
+
+#### Individual Skill
+
+We can investigate how the group-level random effect `(1|PID)` modeled the individual `skill` of participants.
+Firstly, we can visualize the distribution of the coefficient of the random effect per participant.
+This represents, how strong the participant ID `PID` influenced the response variable.
+
+```{r participant-variance}
+r_fit <- m1 %>% 
+  tidy() %>% 
+  mutate(term = janitor::make_clean_names(term)) %>% 
+  split(~term)
+
+intercept <- r_fit$intercept$estimate
+
+PID.offset <- m1 %>% 
+  linpred_draws(
+    datagrid(
+      PID = unique(observations$PID), 
+      RQ = unique(observations$treatment), 
+      model = m1)) %>% 
+  mutate(offset = intercept - .linpred) %>% 
+  ungroup() %>% 
+  mutate(PID = fct_reorder(factor(PID), offset, .fun=mean))
+
+PID.offset %>% ggplot(aes(x = offset, y = PID)) +
+    geom_vline(xintercept = 0) + 
+    stat_pointinterval()
+```
+
+The order of the mean impact of `PID` on the response variable resemples the order of the `PID` value when sorted by the `skill` variable.
+
+```{r participant-skills}
+participants[order(participants$skill),]
+```
+
+We can confirm the alignment between the two variables (skill level of participants as determined in the synthetic data vs. participant-level random effect on the response variable) by investigating the correlation of the skill with the mean value of this random effect.
+For this, we first determine the mean strength of the random effect of `PID`.
+
+```{r pid-effect}
+PID.effect <- PID.offset %>% 
+  group_by(PID) %>% 
+  summarize(mean = mean(offset, na.rm=TRUE)) %>% 
+  mutate(PID = as.numeric(as.character(PID)))
+
+# reorder the data frame by the PID number
+PID.effect <- PID.effect[order(PID.effect$PID),]
+```
+
+Then, we can calculate the Spearman rank correlation between the two sets of values. 
+
+```{r pid-skill-correlation}
+cor.test(x=participants$skill, y=PID.effect$mean, method="spearman")
+```
+
+The correlation coefficient confirms that the two variables are highly correlated and have a monotonic relationship.
+Visualizing the two variables in a scatter plot confirms this correlation visually.
+
+```{r pid-skill-scatter}
+data.frame(
+  skill = participants$skill,
+  mean.PID.effect = PID.effect$mean
+) %>% 
+  ggplot(aes(x=skill, y=mean.PID.effect)) +
+    geom_point()
+```
+
+This confirms that the inclusion of a participant-level random effect `(1|PID)` adequately models the individual skill of a participant and factors it out from the causal relationship.
