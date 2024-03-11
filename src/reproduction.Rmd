@@ -1,0 +1,175 @@
+---
+title: "Reproduction"
+author: "Julian Frattini"
+date: '2024-03-11'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(foreign)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+```
+
+In this notebook, we reproduce the analysis presented in Section 7 of the paper _Vegas, S., Apa, C., & Juristo, N. (2015). Crossover designs in software engineering experiments: Benefits and perils. IEEE Transactions on Software Engineering, 42(2), 120-135._
+All quotes are direct quotes from this publication.
+
+## Data Loading
+
+Firstly, we load the data provided by the authors.
+Since the data cannot be made public, it is not contained in this repository and has to be requested from the original authors.
+
+```{r data-loading}
+data <- read.spss("../data/tse-2016-vegas/data.sav", to.data.frame = TRUE)
+
+head(data)
+```
+
+## Data Visualization
+
+Next, we visualize the raw data.
+The visualizations align with the figures from the original paper.
+
+### Figure 3: Boxplot for technique effectiveness.
+
+```{r figure3}
+data %>% ggplot(aes(x=Technique, y=Effectiveness)) +
+  geom_boxplot()
+```
+
+### Figure 4: Boxplot for sequence effectiveness.
+
+```{r figure4}
+data %>% ggplot(aes(x=Sequence, y=Effectiveness)) +
+  geom_boxplot()
+```
+
+### Figure 5: Boxplot for period/program effectiveness.
+
+```{r figure5}
+data %>% ggplot(aes(x=Period_Program, y=Effectiveness)) +
+  geom_boxplot()
+```
+
+## Data Analysis
+
+Next, we reproduce the data analyses from Section 7.4 of the paper.
+
+### Incorrect Data Analysis: Violated Assumptions of Statistical Tests (Section 7.4.1)
+
+> Let us start by wrongly applying the independent samples t-test on the treatments.
+
+```{r t1-data-pivot}
+data.paired <- data %>% 
+  select(Subject, Technique, Effectiveness) %>% 
+  pivot_wider(names_from = Technique, values_from = Effectiveness)
+```
+
+> To find out whether we can run this test, the normality of each treatment sample needs to be checked. The Shapiro-Wilk test shows a significance value of 0.218 (greater than 0.05) for BT and 0.006 (smaller than 0.05) for EP, which means that EP does not conform to a normal distribution.
+
+```{r t1-independence}
+shapiro.test(data.paired$BT)
+shapiro.test(data.paired$EP)
+```
+
+The obtained values are very close to the ones reported in the manuscript.
+
+> As the independent-samples t-test cannot be applied, we apply the Mann-Whitney test. We find that the null hypothesis cannot be rejected
+
+```{r t1-test}
+wilcox.test(x=data.paired$BT, y=data.paired$EP, paired=FALSE)
+```
+
+The authors of the original paper report a asymptotic significance value of 0.267, which is very close to the one we calculate.
+
+### Incorrect Data Analysis: Omitting Period, Sequence and Carryover (Section 7.4.2)
+
+> Let us now continue wrongly applying the paired-samples t-test on the treatments.
+
+> To find out whether we can run this test, the normality of the sample formed by the difference in the scores of each subject per treatment for the response variable needs to be checked.
+
+```{r t2-independence}
+data.paired.diff <- 
+  data.paired %>% 
+  mutate(delta = BT-EP) 
+
+shapiro.test(data.paired.diff$delta)
+```
+
+> The Shapiro-Wilk test shows a significance value of 0.023 (smaller than 0.05), which indicates that the differences do not conform to a normal distribution.
+
+The obtained value is again very close to the reported value.
+
+> As the paired-samples t-test cannot be used, we apply the non-parametric Wilcoxon test. We find that the null hypothesis cannot be rejected
+
+```{r t2-test}
+wilcox.test(x=data.paired$BT, y=data.paired$EP, paired=TRUE)
+```
+
+The authors of the original paper report a asymptotic significance value of 0.133, which is very close to the one we calculate.
+
+### Incorrect Data Analysis: Analysing Period, Sequence and Carryover Separately (Section 7.4.3)
+
+> Let us now continue (again wrongly) the analysis reported in Section 7.4.2, this time including the additional factors involved in a crossover design — session and sequence — in order to find out whether they are influencing effectiveness.
+
+#### Independent Analysis of Period/Program
+
+> In order to use the paired-samples t-test to analyse the within-subjects factor period, we need to check the sample formed by the difference in the scores of each subject per treatment for the response variable for normality. The Shapiro-Wilk test shows a significance value of 0.021 (smaller than 0.05), which indicates that the differences do not conform to a normal distribution.
+
+```{r t3.1-independence}
+d2 <- data %>% 
+  select(Subject, Period_Program, Effectiveness) %>% 
+  pivot_wider(names_from = Period_Program, values_from = Effectiveness) %>% 
+  mutate(delta = P1-P2)
+
+shapiro.test(d2$delta)
+```
+
+> As the paired-samples t-test cannot be used, we apply the non-parametric Wilcoxon test. We find that the null hypothesis cannot be rejected, and therefore both periods are equally effective, as shown in Table 15 (sig. 0.086).
+
+```{r t3.1-test}
+wilcox.test(x=d2$P1, y=d2$P2, paired=TRUE)
+```
+
+The value we obtain is reasonably close to the reported value.
+
+#### Independent Analysis of Sequence
+
+> In order to apply the independent-samples t-test to the between-subjects factor sequence,17 we need to check each treatment sample for normality. The Shapiro-Wilk test shows a significance value of 0.050 (equal to 0.05) for the sequence BT-EP, and 0.444 (greater than 0.05) for the sequence EP-BT. Therefore the sequence BT-EP does not conform to a normal distribution, while the sequence EP-BT does.
+
+```{r t3.2-independence}
+d3 <- data %>% 
+  filter(Sequence == "EP-BT")
+
+shapiro.test(d3$Effectiveness)
+
+d4 <- data %>% 
+  filter(Sequence == "BT-EP")
+
+shapiro.test(d4$Effectiveness)
+```
+
+> As the independent-samples t-test cannot be used, we apply the non-parametric Mann-Whitney test. We find that the null hypothesis cannot be rejected, and therefore both sequences are equally effective, as shown in Table 16 (sig. 0.086).
+
+```{r t3.2-test}
+wilcox.test(x=d3$Effectiveness, y=d4$Effectiveness, paired=FALSE)
+```
+
+### Correct Data Analysis: Analysing Period, Sequence and Carryover Jointly (Section 7.4.4)
+
+> the best method for analysing models with random coefficients and data dependency due to repeated measures is the linear mixed model. The model includes the following terms: technique (treatment), period (confounded with program in this experiment) and sequence (confounded with period x technique and carryover in this experiment) as fixed factors, and subject as random factor nested within sequence.
+
+```{r t4-model}
+m <- lmer(formula = Effectiveness ~ 1 + Sequence + Period_Program + Technique + (1|Subject),
+          data = data)
+
+summary(m)
+```
+
+> According to the tests of fixed effects shown in Table 17, the effectiveness of the equivalence partitioning technique is significantly different from branch testing (sig. 0.041). Equivalence partitioning is less effective than branch testing (effectiveness of 46.53 and 55.56 percent, respectively).
+
+The reported value (p=0.041) is fairly close to the obtained value (Pr(>|t|) = 0.0413).
+The p-value of all other factors is similarly close.
