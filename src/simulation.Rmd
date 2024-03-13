@@ -23,8 +23,9 @@ In this notebook, we perform a simulation of our assumptions to demonstrate the 
 ## Data synthesis
 
 Firstly, we synthesize a data set in which we know the effect of certain variables on our response variable.
-We determine $n=50$ participants and assume a $2\times2$ factorial crossover design.
+We determine `n.participants` participants and assume a $2\times2$ factorial crossover design.
 This means, the synthesized data set simulates an experiment with 2 levels of the main factor (i.e., baseline and treatment) administered to every participant in 2 periods.
+Per period, we assume taking `n.measures` number of measures.
 
 ```{r constants}
 # number of hypothesized participants in the experiment
@@ -34,6 +35,12 @@ n.participants <- 50
 n.periods <- 2
 periods <- data.frame(
   period = seq(1, n.periods)
+)
+
+# number of measures 
+n.measures <- 1
+measures <- data.frame(
+  measure = seq(1, n.measures)
 )
 ```
 
@@ -70,7 +77,7 @@ participants.id <- seq(1, n.participants)
 # randomly assign a "skill" value to each participant
 participants.skill <- rnorm(n.participants, 0, 1)
 
-# assemple a data frame of participants
+# assemble a data frame of participants
 participants <- data.frame(
   PID = participants.id,
   skill = participants.skill,
@@ -84,12 +91,12 @@ We set the standard deviation $\sigma$ to 0.3, which introduces slight variation
 
 ```{r data-response}
 observations <- participants %>% 
+  cross_join(measures) %>% 
   cross_join(periods) %>% 
   mutate(treatment = (group!=period)) %>% 
+  rowwise() %>% 
   mutate(
-    response = rnorm(n.participants*n.periods, 
-                     e.baseline + e.treatment*treatment + e.learning*(period-1) + e.skill*skill + e.crossover.AB*(period-1)*(abs(group-2)) + e.crossover.BA*(period-1)*(group-1),
-                     0.3)
+    response = rnorm(1, e.baseline + e.treatment*treatment + e.learning*(period-1) + e.skill*skill + e.crossover.AB*(period-1)*(abs(group-2)) + e.crossover.BA*(period-1)*(group-1), 0.3)
   )
 ```
 
@@ -126,6 +133,8 @@ priors1 <- c(
   prior(normal(0, 1), class=Intercept),
   prior(normal(0, 1), class=b)
 )
+
+ndraws <- 100
 ```
 
 We sample draws directly from the priors (i.e., sample without the model updating its parameter distributions based on the observed data) to evaluate the feasibility of the priors. 
@@ -141,8 +150,6 @@ m1.prior <-
 With the samples from the prior distributions, we conduct a prior predictive check to ensure that the priors are appropriate, i.e., the actual observations are realistic given the prior knowledge of the model.
 
 ```{r prior-predictive-check}
-ndraws <- 100
-
 brms::pp_check(m1.prior, ndraws=ndraws)
 ```
 
@@ -165,6 +172,9 @@ Again, we perform a posterior predictive check to ensure that the predictions of
 ```{r posterior-predictive-check}
 brms::pp_check(m1, ndraws=ndraws)
 ```
+
+The distribution of draws still encompasses the actually observed data and additionally grew closer to it (compared to the prior predictive check).
+This means that the coefficient distributions have improved and the model has learned.
 
 ### Model Evaluation
 
