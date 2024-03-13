@@ -15,7 +15,7 @@ library(janitor)
 library(tidybayes)
 library(marginaleffects)
 
-set.seed(44)
+set.seed(42)
 ```
 
 In this notebook, we perform a simulation of our assumptions to demonstrate the capability of a Bayesian model to recover the strength of effects causing the observed data.
@@ -52,10 +52,12 @@ e.learning <- effects[6]
 ```
 
 ```{r effects-output}
-data.frame(
+d.effects <- data.frame(
   Effect = c("Baseline (Intercept)", "Treatment", "Individual skill", "Crossover Effect (AB)", "Crossover Effect (BA)", "Learning Effect"),
   Strength = c(e.baseline, e.treatment, e.skill, e.crossover.AB, e.crossover.BA, e.learning)
-) %>% knitr::kable("simple")
+) 
+
+d.effects %>% knitr::kable("simple")
 ```
 
 We construct a data frame of participants, consisting of their ID, a randomly assigned skill value (also $\mathcal{N}(0, 1)$) representing their inherent capability, and an assignment to a experimental group (either AB (`group=1`), which receives the treatment in period 2, or group BA (`group=2`), which receives the treatment in period 1).
@@ -166,80 +168,81 @@ brms::pp_check(m1, ndraws=ndraws)
 
 ### Model Evaluation
 
-Finally, we evaluate the model
-
-#### Coefficients
-
-First, we investigate the coefficients to see how well they align with the effect strength that we determined before.
+Finally, we evaluate the resulting model.
 
 ```{r summary}
 summary(m1)
 ```
 
-#### Individual Skill
+#### Fixed Effects
 
-We can investigate how the group-level random effect `(1|PID)` modeled the individual `skill` of participants.
-Firstly, we can visualize the distribution of the coefficient of the random effect per participant.
-This represents, how strong the participant ID `PID` influenced the response variable.
+First, we investigate the coefficients of fixed effects to see how well they align with the effect strength that we determined before.
 
-```{r participant-variance}
-r_fit <- m1 %>% 
-  tidy() %>% 
-  mutate(term = janitor::make_clean_names(term)) %>% 
-  split(~term)
+```{r fixed-effects}
+# obtain the fixed effects in the model
+coefs.fixed <- data.frame(fixef(m1, summary = TRUE))
 
-intercept <- r_fit$intercept$estimate
+# make the name of the factor (which was previously the index of the data frame) an explicit column
+coefs.fixed <- cbind(factor = rownames(coefs.fixed), coefs.fixed)
 
-PID.offset <- m1 %>% 
-  linpred_draws(
-    datagrid(
-      PID = unique(observations$PID), 
-      RQ = unique(observations$treatment), 
-      model = m1)) %>% 
-  mutate(offset = intercept - .linpred) %>% 
-  ungroup() %>% 
-  mutate(PID = fct_reorder(factor(PID), offset, .fun=mean))
-
-PID.offset %>% ggplot(aes(x = offset, y = PID)) +
-    geom_vline(xintercept = 0) + 
-    stat_pointinterval()
+# add a numeric column to the updated data frame
+rownames(coefs.fixed) <- 1:nrow(coefs.fixed)
 ```
 
-The order of the mean impact of `PID` on the response variable resemples the order of the `PID` value when sorted by the `skill` variable.
+Then we add a column to our data frame containing the actual effects defined by us where the names of the factors align with the output from the model.
 
-```{r participant-skills}
-participants[order(participants$skill),]
+```{r effects-df-rename}
+d.effects.coefs <- cbind(factor = c(
+  'Intercept', 'treatmentTRUE', 'PID', 'treatmentTRUE:period', 'treatmentFALSE:period', 'period'
+  ), d.effects) %>% 
+  filter(factor %in% coefs.fixed$factor)
 ```
 
-We can confirm the alignment between the two variables (skill level of participants as determined in the synthetic data vs. participant-level random effect on the response variable) by investigating the correlation of the skill with the mean value of this random effect.
-For this, we first determine the mean strength of the random effect of `PID`.
+Now, we can visualize the mean and confidence interval of the calculated coefficient distributions (black errorbars) and compare them to the actual effect defined by us (red dot).
 
-```{r pid-effect}
-PID.effect <- PID.offset %>% 
-  group_by(PID) %>% 
-  summarize(mean = mean(offset, na.rm=TRUE)) %>% 
-  mutate(PID = as.numeric(as.character(PID)))
-
-# reorder the data frame by the PID number
-PID.effect <- PID.effect[order(PID.effect$PID),]
+```{r fixed-effect-distributions}
+coefs.fixed %>% ggplot(aes(y=factor)) +
+  geom_point(aes(x=Estimate)) +
+  geom_errorbar(aes(xmin=Q2.5, xmax=Q97.5), width=0.3) +
+  geom_point(aes(x=Strength), data=d.effects.coefs, size=3, color="red") +
+  geom_vline(xintercept = 0, linetype="dashed", color="grey")
 ```
 
-Then, we can calculate the Spearman rank correlation between the two sets of values. 
+#### Random Effects
 
-```{r pid-skill-correlation}
-cor.test(x=participants$skill, y=PID.effect$mean, method="spearman")
+The random effect of the participant ID `(1|PID)` should model the `skill` value of each participant.
+We would expect that the intercept of the random effect equals the skill value times the skill effect.
+
+```{r pid-summary}
+PID.impact <- data.frame(ranef(m1)[1]$PID)
 ```
 
-The correlation coefficient confirms that the two variables are highly correlated and have a monotonic relationship.
-Visualizing the two variables in a scatter plot confirms this correlation visually.
+A scatter plot visualizes the distribution of $participants.skill \times e.skill$ against the mean intercept of each participant.
 
 ```{r pid-skill-scatter}
 data.frame(
-  skill = participants$skill,
-  mean.PID.effect = PID.effect$mean
+  skill = participants.skill * e.skill,
+  PID.intercept = PID.impact$Estimate.Intercept
 ) %>% 
-  ggplot(aes(x=skill, y=mean.PID.effect)) +
-    geom_point()
+  ggplot(aes(x=skill, y=PID.intercept)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope=1)
 ```
 
-This confirms that the inclusion of a participant-level random effect `(1|PID)` adequately models the individual skill of a participant and factors it out from the causal relationship.
+We can quantify this correlation by calculating a correlation coefficient.
+Firstly, we determine whether the two distributions are normally distributed.
+
+```{r pid-skill-normal}
+shapiro.test(participants.skill)
+shapiro.test(PID.impact$Estimate.Intercept)
+```
+
+The Shapiro-Wilk tests suggests that both distributions are normal.
+This is as expected, since $participants.skill \sim \mathcal{N}(0, 1)$ and the intercepts per PID should resemble it.
+Consequently, we can calculate the Pearson correlation coefficient.
+
+```{r pid-skill-correlation}
+cor.test(x=participants$skill, y=PID.impact$Estimate.Intercept, method="pearson")
+```
+
+This confirms that the inclusion of a participant-level random effect `(1|PID)` adequately models the individual skill of a participant and factors it out from the relationship of interest.
