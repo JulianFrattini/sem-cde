@@ -111,14 +111,18 @@ If we added a value each to both and they both had the same sign, the carryover 
 We visualize the distribution of the response variable stratified by different factors.
 
 ```{r vis-treatment}
+observations
+
 observations %>% ggplot(aes(y=as.factor(treatment), x=response)) +
   geom_boxplot() +
+  scale_y_discrete(limits=rev) +
   labs(x = "Response Variable", y = "Treatment")
 ```
 
 ```{r vis-learning}
 observations %>% ggplot(aes(y=as.factor(period), x=response)) +
   geom_boxplot() +
+  scale_y_discrete(limits=rev) +
   labs(x = "Response Variable", y = "Period")
 ```
 
