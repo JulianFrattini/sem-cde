@@ -14,6 +14,7 @@ library(broom.mixed)
 library(janitor)
 library(tidybayes)
 library(marginaleffects)
+library(patchwork)
 
 set.seed(42)
 ```
@@ -145,7 +146,7 @@ Now, we analyze the data with our proposed approach.
 
 ### Formula and Priors
 
-We define a linear model that determines the `response` variable in relation to the causally related variables.
+We define linear models that determine the `response` variable based on all causally related variables.
 The formula consists of the following terms:
 
 | Term | Variable | Meaning |
@@ -154,14 +155,24 @@ The formula consists of the following terms:
 | `treatment` | Treatment | Effect of the treatment |
 | `period` | Learning | Effect of repeating the experimental task |
 | `treatment*period` | Carryover | Effect of administering the treatment in period 1 on period 2 |
-| `(1|PID)` | Skill | Random effect (group-wise) of the capability of each participant |
+| `(1|PID)` | Within-subject variance | Random effect (group-wise) of the capability of each participant |
 
-The `treatment` and `period` term are added automatically via the `treatment*period` interaction.
+We compare multiple models with different combinations.
+
+| Formula | Learning | Carryover | Within-subject variance |
+|---|---|---|---|
+| f1 | | | | 
+| f2 | $\checkmark$ | | | 
+| f3 | $\checkmark$ | $\checkmark$ | | 
+| f4 | $\checkmark$ | $\checkmark$ | $\checkmark$ | 
 
 ```{r formula}
-f1 <- response ~ 1 + treatment*period + (1|PID)
+f1 <- response ~ 1 + treatment
+f2 <- response ~ 1 + treatment + period
+f3 <- response ~ 1 + treatment*period
+f4 <- response ~ 1 + treatment*period + (1|PID)
 
-get_prior(f1, data=observations, family=gaussian)
+get_prior(f4, data=observations, family=gaussian)
 ```
 
 We select uninformative priors, which are mainly normal distributions centered around the mean 0 ($\mathcal{N}(0, 1)$).
@@ -170,7 +181,15 @@ This ensures that we introduce no bias to the resulting posterior predictions.
 ```{r priors}
 priors1 <- c(
   prior(normal(0, 1), class=Intercept),
-  prior(normal(0, 1), class=b)
+  prior(normal(0, 1), class=b),
+  prior(weibull(2,1), class=sigma)
+)
+
+priors2 <- c(
+  prior(normal(0, 1), class=Intercept),
+  prior(normal(0, 1), class=b),
+  prior(weibull(2,1), class=sigma),
+  prior(weibull(2,1), class=sd)
 )
 
 ndraws <- 100
@@ -178,18 +197,51 @@ ndraws <- 100
 
 We sample draws directly from the priors (i.e., sample without the model updating its parameter distributions based on the observed data) to evaluate the feasibility of the priors. 
 
-```{r model-priors}
+```{r model1-priors}
 m1.prior <-
   brm(data = observations, family = gaussian, f1, prior = priors1,
     iter = 4000, warmup = 1000, chains = 4, cores = 4,
-    seed = 4, sample_prior="only"
+    seed = 4, sample_prior="only",
+    file = "fits/m1.prior"
+  )
+```
+
+```{r model2-priors}
+m2.prior <-
+  brm(data = observations, family = gaussian, f2, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only",
+    file = "fits/m2.prior"
+  )
+```
+
+```{r model3-priors}
+m3.prior <-
+  brm(data = observations, family = gaussian, f3, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only",
+    file = "fits/m3.prior"
+  )
+```
+
+```{r model4-priors}
+m4.prior <-
+  brm(data = observations, family = gaussian, f4, prior = priors2,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only",
+    file = "fits/m4.prior"
   )
 ```
 
 With the samples from the prior distributions, we conduct a prior predictive check to ensure that the priors are appropriate, i.e., the actual observations are realistic given the prior knowledge of the model.
 
 ```{r prior-predictive-check}
-brms::pp_check(m1.prior, ndraws=ndraws)
+m1.priorpc <- brms::pp_check(m1.prior, ndraws=ndraws)
+m2.priorpc <- brms::pp_check(m2.prior, ndraws=ndraws)
+m3.priorpc <- brms::pp_check(m3.prior, ndraws=ndraws)
+m4.priorpc <- brms::pp_check(m4.prior, ndraws=ndraws)
+
+(m1.priorpc | m2.priorpc) / (m3.priorpc | m4.priorpc)
 ```
 
 The distribution of draws encompasses the actually observed data, meaning that the actual observations lie within the realm of belief defined by the priors. We accept our priors as feasible.
@@ -198,18 +250,51 @@ The distribution of draws encompasses the actually observed data, meaning that t
 
 With the appropriateness of priors confirmed, we train the model on the actual data.
 
-```{r model}
+```{r model1}
 m1 <-
   brm(data = observations, family = gaussian, f1, prior = priors1,
     iter = 4000, warmup = 1000, chains = 4, cores = 4,
-    seed = 4
+    seed = 4,
+    file = "fits/m1"
+  )
+```
+
+```{r model2}
+m2 <-
+  brm(data = observations, family = gaussian, f2, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    file = "fits/m2"
+  )
+```
+
+```{r model3}
+m3 <-
+  brm(data = observations, family = gaussian, f3, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    file = "fits/m3"
+  )
+```
+
+```{r model4}
+m4 <-
+  brm(data = observations, family = gaussian, f4, prior = priors2,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    file = "fits/m4"
   )
 ```
 
 Again, we perform a posterior predictive check to ensure that the predictions of the model are feasible.
 
 ```{r posterior-predictive-check}
-brms::pp_check(m1, ndraws=ndraws)
+m1.postpc <- brms::pp_check(m1, ndraws=ndraws)
+m2.postpc  <- brms::pp_check(m2, ndraws=ndraws)
+m3.postpc  <- brms::pp_check(m3, ndraws=ndraws)
+m4.postpc  <- brms::pp_check(m4, ndraws=ndraws)
+
+(m1.postpc | m2.postpc) / (m3.postpc | m4.postpc)
 ```
 
 The distribution of draws still encompasses the actually observed data and additionally grew closer to it (compared to the prior predictive check).
@@ -220,7 +305,7 @@ This means that the coefficient distributions have improved and the model has le
 Finally, we evaluate the resulting model.
 
 ```{r summary}
-summary(m1)
+summary(m4)
 ```
 
 #### Fixed Effects
@@ -229,12 +314,27 @@ First, we investigate the coefficients of fixed effects to see how well they ali
 
 ```{r fixed-effects}
 # obtain the fixed effects in the model
-coefs.fixed <- data.frame(fixef(m1, summary = TRUE))
-
+m1.coefs.fixed <- data.frame(fixef(m1, summary = TRUE))
 # make the name of the factor (which was previously the index of the data frame) an explicit column
-coefs.fixed <- cbind(factor = rownames(coefs.fixed), coefs.fixed)
+m1.coefs.fixed <- cbind(factor = rownames(m1.coefs.fixed), m1.coefs.fixed)
+# add column identifying the model
+m1.coefs.fixed$model <- 'm1'
 
-# add a numeric column to the updated data frame
+m2.coefs.fixed <- data.frame(fixef(m2, summary = TRUE))
+m2.coefs.fixed <- cbind(factor = rownames(m2.coefs.fixed), m2.coefs.fixed)
+m2.coefs.fixed$model <- 'm2'
+
+m3.coefs.fixed <- data.frame(fixef(m3, summary = TRUE))
+m3.coefs.fixed <- cbind(factor = rownames(m3.coefs.fixed), m3.coefs.fixed)
+m3.coefs.fixed$model <- 'm3'
+
+m4.coefs.fixed <- data.frame(fixef(m4, summary = TRUE))
+m4.coefs.fixed <- cbind(factor = rownames(m4.coefs.fixed), m4.coefs.fixed)
+m4.coefs.fixed$model <- 'm4'
+
+coefs.fixed <- rbind(m1.coefs.fixed, m2.coefs.fixed, m3.coefs.fixed, m4.coefs.fixed)
+
+#add a numeric column to the updated data frame
 rownames(coefs.fixed) <- 1:nrow(coefs.fixed)
 ```
 
@@ -250,11 +350,18 @@ d.effects.coefs <- cbind(factor = c(
 Now, we can visualize the mean and confidence interval of the calculated coefficient distributions (black errorbars) and compare them to the actual effect defined by us (red dot).
 
 ```{r fixed-effect-distributions}
-coefs.fixed %>% ggplot(aes(y=factor)) +
-  geom_point(aes(x=Estimate)) +
-  geom_errorbar(aes(xmin=Q2.5, xmax=Q97.5), width=0.3) +
-  geom_point(aes(x=Strength), data=d.effects.coefs, size=3, color="red") +
-  geom_vline(xintercept = 0, linetype="dashed", color="grey")
+position.offset <- position_nudge(
+  y = ifelse(coefs.fixed$model == "m1", 0.3,
+             ifelse(coefs.fixed$model == "m2", 0.1,
+             ifelse(coefs.fixed$model == "m3", -0.1, -0.3)))
+)
+
+coefs.fixed %>% ggplot(aes(y = factor, color = model)) +
+  geom_point(aes(x = Estimate), position = position.offset) +
+  geom_errorbar(aes(xmin = Q2.5, xmax = Q97.5), position = position.offset,width = 0.15) +
+  geom_point(aes(x = Strength), data = d.effects.coefs, size = 3, color = "red") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
+  scale_y_discrete(limits=rev(c("Intercept", "treatmentTRUE", "period", "treatmentTRUE:period")))
 ```
 
 #### Random Effects
@@ -263,7 +370,7 @@ The random effect of the participant ID `(1|PID)` should model the `skill` value
 We would expect that the intercept of the random effect equals the skill value times the skill effect.
 
 ```{r pid-summary}
-PID.impact <- data.frame(ranef(m1)[1]$PID)
+PID.impact <- data.frame(ranef(m4)[1]$PID)
 ```
 
 A scatter plot visualizes the distribution of $participants.skill \times e.skill$ against the mean intercept of each participant.

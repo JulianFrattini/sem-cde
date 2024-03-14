@@ -48,3 +48,4 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 data/tse-2016-vegas/
+src/fits/
