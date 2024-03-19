@@ -163,7 +163,7 @@ wilcox.test(x=d3$Effectiveness, y=d4$Effectiveness, paired=FALSE)
 > the best method for analysing models with random coefficients and data dependency due to repeated measures is the linear mixed model. The model includes the following terms: technique (treatment), period (confounded with program in this experiment) and sequence (confounded with period x technique and carryover in this experiment) as fixed factors, and subject as random factor nested within sequence.
 
 ```{r t4-model}
-m <- lmer(formula = Effectiveness ~ 1 + Sequence + Period_Program + Technique + (1|Subject),
+m <- lmer(formula = Effectiveness ~ 1 + Sequence + Period_Program + Technique + (1|Sequence/Subject),
           data = data)
 
 summary(m)

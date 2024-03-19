@@ -367,42 +367,50 @@ shapiro.test(d4$Effectiveness)</code></pre>
 <blockquote>
 <p>the best method for analysing models with random coefficients and data dependency due to repeated measures is the linear mixed model. The model includes the following terms: technique (treatment), period (confounded with program in this experiment) and sequence (confounded with period x technique and carryover in this experiment) as fixed factors, and subject as random factor nested within sequence.</p>
 </blockquote>
-<pre class="r"><code>m &lt;- lmer(formula = Effectiveness ~ 1 + Sequence + Period_Program + Technique + (1|Subject),
-          data = data)
-
-summary(m)</code></pre>
+<pre class="r"><code>m &lt;- lmer(formula = Effectiveness ~ 1 + Sequence + Period_Program + Technique + (1|Sequence/Subject),
+          data = data)</code></pre>
+<pre><code>## Warning in checkConv(attr(opt, &quot;derivs&quot;), opt$par, ctrl = control$checkConv, :
+## unable to evaluate scaled gradient</code></pre>
+<pre><code>## Warning in checkConv(attr(opt, &quot;derivs&quot;), opt$par, ctrl = control$checkConv, :
+## Hessian is numerically singular: parameters are not uniquely determined</code></pre>
+<pre><code>## Warning: Model failed to converge with 1 negative eigenvalue: -4.1e-08</code></pre>
+<pre class="r"><code>summary(m)</code></pre>
 <pre><code>## Linear mixed model fit by REML. t-tests use Satterthwaite&#39;s method [
 ## lmerModLmerTest]
 ## Formula: Effectiveness ~ 1 + Sequence + Period_Program + Technique + (1 |  
-##     Subject)
+##     Sequence/Subject)
 ##    Data: data
 ## 
 ## REML criterion at convergence: 355.6
 ## 
 ## Scaled residuals: 
 ##     Min      1Q  Median      3Q     Max 
-## -1.7296 -0.4337 -0.2006  0.7122  1.5258 
+## -1.7296 -0.4336 -0.2007  0.7122  1.5258 
 ## 
 ## Random effects:
-##  Groups   Name        Variance Std.Dev.
-##  Subject  (Intercept) 185.2    13.61   
-##  Residual             186.9    13.67   
-## Number of obs: 44, groups:  Subject, 22
+##  Groups           Name        Variance Std.Dev.
+##  Subject:Sequence (Intercept) 185.262  13.611  
+##  Sequence         (Intercept)   1.993   1.412  
+##  Residual                     186.900  13.671  
+## Number of obs: 44, groups:  Subject:Sequence, 22; Sequence, 2
 ## 
 ## Fixed effects:
 ##                  Estimate Std. Error     df t value Pr(&gt;|t|)    
-## (Intercept)        52.778      5.569 32.059   9.477 8.14e-11 ***
-## SequenceEP-BT      -2.083      7.148 20.000  -0.291   0.7737    
-## Period_ProgramP2    7.639      4.139 20.000   1.845   0.0798 .  
-## TechniqueEP        -9.027      4.139 20.000  -2.181   0.0413 *  
+## (Intercept)        52.778      5.745 34.304   9.186 8.99e-11 ***
+## SequenceEP-BT      -2.083      7.422 23.098  -0.281   0.7814    
+## Period_ProgramP2    7.639      4.139 20.002   1.846   0.0798 .  
+## TechniqueEP        -9.027      4.139 20.002  -2.181   0.0413 *  
 ## ---
 ## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
 ## 
 ## Correlation of Fixed Effects:
 ##             (Intr) SEP-BT Pr_PP2
-## SequncEP-BT -0.583              
-## Prd_PrgrmP2 -0.338  0.000       
-## TechniqueEP -0.338  0.000 -0.091</code></pre>
+## SequncEP-BT -0.591              
+## Prd_PrgrmP2 -0.327  0.000       
+## TechniqueEP -0.327  0.000 -0.091
+## optimizer (nloptwrap) convergence code: 0 (OK)
+## unable to evaluate scaled gradient
+##  Hessian is numerically singular: parameters are not uniquely determined</code></pre>
 <blockquote>
 <p>According to the tests of fixed effects shown in Table 17, the effectiveness of the equivalence partitioning technique is significantly different from branch testing (sig. 0.041). Equivalence partitioning is less effective than branch testing (effectiveness of 46.53 and 55.56 percent, respectively).</p>
 </blockquote>
