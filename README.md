@@ -10,6 +10,7 @@ This repository contains the following items:
   * state-of-practice/ : data connected to the evaluation of the state of practice
     * `data-extraction-ira.xlsx` : extraction overlap for inter-rater agreement
 * src/ : directory for all code and scripts
+  * `simulation.Rmd` : simulation of our hypotheses with a synthetic data set
   * `reproduction.Rmd` : reproduction of the study by Vegas et al.[^1]
   
 ## Usage

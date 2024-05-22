@@ -1,0 +1,443 @@
+---
+title: "Simulation"
+author: "Julian Frattini"
+date: '2024-03-08'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(brms)
+library(broom.mixed)
+library(janitor)
+library(tidybayes)
+library(marginaleffects)
+library(patchwork)
+
+set.seed(42)
+```
+
+In this notebook, we perform a simulation of our assumptions to demonstrate the capability of a Bayesian model to recover the strength of effects causing the observed data.
+
+## Data synthesis
+
+Firstly, we synthesize a data set in which we know the effect of certain variables on our response variable.
+We determine `n.participants` participants and assume a $2\times2$ factorial crossover design.
+This means, the synthesized data set simulates an experiment with 2 levels of the main factor (i.e., baseline and treatment) administered to every participant in 2 periods.
+Per period, we assume taking `n.measures` number of measures.
+
+```{r constants}
+# number of hypothesized participants in the experiment
+n.participants <- 50
+
+# number of periods
+n.periods <- 2
+periods <- data.frame(
+  period = seq(1, n.periods)
+)
+
+# number of measures 
+n.measures <- 1
+measures <- data.frame(
+  measure = seq(1, n.measures)
+)
+```
+
+Next, we determine the strength of the effect that each variable has on the response variable.
+To avoid researcher bias, we randomly sample these effect strength values from a random distribution $\mathcal{N}(0, 1)$.
+
+```{r effects}
+effects <- rnorm(6, 0, 1)
+
+e.baseline <- effects[1]
+e.treatment <- effects[2]
+e.skill <- effects[3]
+e.crossover.AB <- effects[4] # baseline -> treatment
+e.crossover.BA <- effects[5] # treatment -> baseline
+e.learning <- effects[6]
+```
+
+```{r effects-output}
+d.effects <- data.frame(
+  Effect = c("Baseline (Intercept)", "Treatment", "Individual skill", "Carryover Effect (AB)", "Carryover Effect (BA)", "Learning Effect"),
+  Strength = c(e.baseline, e.treatment, e.skill, e.crossover.AB, e.crossover.BA, e.learning)
+) 
+
+d.effects %>% knitr::kable("simple")
+```
+
+We construct a data frame of participants, consisting of their ID, a randomly assigned skill value (also $\mathcal{N}(0, 1)$) representing their inherent capability, and an assignment to a experimental group (either AB (`group=1`), which receives the treatment in period 2, or group BA (`group=2`), which receives the treatment in period 1).
+The two variables of participants that influence the response variable (group and skill) are not correlated.
+
+```{r data-participants}
+# generate IDs for each participant
+participants.id <- seq(1, n.participants)
+
+# randomly assign a "skill" value to each participant
+participants.skill <- rnorm(n.participants, 0, 1)
+
+# assemble a data frame of participants
+participants <- data.frame(
+  PID = participants.id,
+  skill = participants.skill,
+  group = rep(c(1, 2), n.participants/2) # assignment of participants to groups
+)
+```
+
+Finally, we generate synthetic values of the `response` variable according to our causal model.
+This means, the response variable is calculated via random draws from a normal distribution where the mean $\mu$ is calculated via all causal variables according to their respective effect strength.
+We set the standard deviation $\sigma$ to 0.3, which introduces slight variation around the calculated values.
+
+```{r data-response}
+observations <- participants %>% 
+  cross_join(measures) %>% 
+  cross_join(periods) %>% 
+  mutate(treatment = (group!=period)) %>% 
+  rowwise() %>% 
+  mutate(
+    response = rnorm(1, e.baseline + e.treatment*treatment + e.learning*(period-1) + e.skill*skill + e.crossover.AB*(period-1)*(abs(group-2)), 0.3)
+    #response = rnorm(1, e.baseline + e.treatment*treatment + e.learning*(period-1) + e.skill*skill + e.crossover.AB*(period-1)*(abs(group-2)) + e.crossover.BA*(period-1)*(group-1), 0.3)
+  ) %>% 
+  mutate(
+    period = factor(period, levels=1:2, ordered=TRUE),
+    group = factor(group, levels=1:2, ordered=FALSE)
+  )
+```
+
+We define the carryover effect to be the difference in the response variable in period 2 in the two different groups.
+It does not matter whether we add this difference to the response variable values of group 1 or group 2, as long as we do not add a value to both.
+If we added a value each to both and they both had the same sign, the carryover effect becomes indistinguishable from the learning effect.
+
+## Data Visualization
+
+We visualize the distribution of the response variable stratified by different factors.
+
+```{r vis-treatment}
+observations
+
+observations %>% ggplot(aes(y=as.factor(treatment), x=response)) +
+  geom_boxplot() +
+  scale_y_discrete(limits=rev) +
+  labs(x = "Response Variable", y = "Treatment")
+```
+
+```{r vis-learning}
+observations %>% ggplot(aes(y=as.factor(period), x=response)) +
+  geom_boxplot() +
+  scale_y_discrete(limits=rev) +
+  labs(x = "Response Variable", y = "Period")
+```
+
+```{r vis-skill}
+observations %>% ggplot(aes(x=skill, y=response)) +
+  geom_point() +
+  labs(x = "Skill", y = "Response Variable")
+```
+
+The visualization of the carryover effect shows how the two sequences differ.
+In group AB, the distribution of the response variable for period 2 is influenced by the inercept, the learning effect, the treatment, and the carryover effect.
+In group BA, the distribution of the response variable for period 2 is only influenced by the intercept and the learning effect.
+
+```{r vis-carryover}
+observations %>% 
+  ggplot(aes(x=as.factor(period), y=response)) +
+  geom_boxplot() +
+  facet_grid(. ~ group, labeller = as_labeller(c("1" = "AB", "2"="BA"))) +
+  labs(x = "Period", y = "Response Variable")
+```
+
+## Data Analysis
+
+Now, we analyze the data with our proposed approach.
+
+### Formula and Priors
+
+We define linear models that determine the `response` variable based on all causally related variables.
+The formula consists of the following terms:
+
+| Term | Variable | Meaning |
+|---|---|---|
+| `1` | Intercept | Fixed effect (population-wise) on the response variable |
+| `treatment` | Treatment | Effect of the treatment |
+| `period` | Learning | Effect of repeating the experimental task |
+| `treatment*period` | Carryover | Effect of administering the treatment in period 1 on period 2 |
+| `(1|PID)` | Within-subject variance | Random effect (group-wise) of the capability of each participant |
+
+We compare multiple models with different combinations.
+
+| Formula | Learning | Carryover | Within-subject variance |
+|---|---|---|---|
+| f1 | | | | 
+| f2 | $\checkmark$ | | | 
+| f3 | $\checkmark$ | $\checkmark$ | | 
+| f4 | $\checkmark$ | $\checkmark$ | $\checkmark$ | 
+
+```{r formula}
+f1 <- response ~ 1 + treatment
+f2 <- response ~ 1 + treatment + period
+f3 <- response ~ 1 + treatment*period
+f4 <- response ~ 1 + treatment*period + (1|PID)
+f5 <- response ~ 1 + treatment*period + (1|group/PID)
+
+get_prior(f5, data=observations, family=gaussian)
+```
+
+We select uninformative priors, which are mainly normal distributions centered around the mean 0 ($\mathcal{N}(0, 1)$).
+This ensures that we introduce no bias to the resulting posterior predictions.
+
+```{r priors}
+priors1 <- c(
+  prior(normal(0, 1), class=Intercept),
+  prior(normal(0, 1), class=b),
+  prior(weibull(2,1), class=sigma)
+)
+
+priors2 <- c(
+  prior(normal(0, 1), class=Intercept),
+  prior(normal(0, 1), class=b),
+  prior(weibull(2,1), class=sigma),
+  prior(weibull(2,1), class=sd)
+)
+
+ndraws <- 100
+```
+
+We sample draws directly from the priors (i.e., sample without the model updating its parameter distributions based on the observed data) to evaluate the feasibility of the priors. 
+
+```{r model1-priors}
+m1.prior <-
+  brm(data = observations, family = gaussian, f1, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only",
+    file = "fits/m1.prior"
+  )
+```
+
+```{r model2-priors}
+m2.prior <-
+  brm(data = observations, family = gaussian, f2, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only",
+    file = "fits/m2.prior"
+  )
+```
+
+```{r model3-priors}
+m3.prior <-
+  brm(data = observations, family = gaussian, f3, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only",
+    file = "fits/m3.prior"
+  )
+```
+
+```{r model4-priors}
+m4.prior <-
+  brm(data = observations, family = gaussian, f4, prior = priors2,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4, sample_prior="only",
+    file = "fits/m4.prior"
+  )
+```
+
+With the samples from the prior distributions, we conduct a prior predictive check to ensure that the priors are appropriate, i.e., the actual observations are realistic given the prior knowledge of the model.
+
+```{r prior-predictive-check}
+m1.priorpc <- brms::pp_check(m1.prior, ndraws=ndraws)
+m2.priorpc <- brms::pp_check(m2.prior, ndraws=ndraws)
+m3.priorpc <- brms::pp_check(m3.prior, ndraws=ndraws)
+m4.priorpc <- brms::pp_check(m4.prior, ndraws=ndraws)
+
+(m1.priorpc | m2.priorpc) / (m3.priorpc | m4.priorpc)
+```
+
+The distribution of draws encompasses the actually observed data, meaning that the actual observations lie within the realm of belief defined by the priors. We accept our priors as feasible.
+
+### Model Training
+
+With the appropriateness of priors confirmed, we train the model on the actual data.
+
+```{r model1}
+m1 <-
+  brm(data = observations, family = gaussian, f1, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    file = "fits/m1"
+  )
+```
+
+```{r model2}
+m2 <-
+  brm(data = observations, family = gaussian, f2, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    file = "fits/m2"
+  )
+```
+
+```{r model3}
+m3 <-
+  brm(data = observations, family = gaussian, f3, prior = priors1,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    file = "fits/m3"
+  )
+```
+
+```{r model4}
+m4 <-
+  brm(data = observations, family = gaussian, f4, prior = priors2,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    file = "fits/m4"
+  )
+```
+
+
+```{r model5}
+m5 <-
+  brm(data = observations, family = gaussian, f5, prior = priors2,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    #file = "fits/m5"
+  )
+```
+
+Again, we perform a posterior predictive check to ensure that the predictions of the model are feasible.
+
+```{r posterior-predictive-check}
+m1.postpc <- brms::pp_check(m1, ndraws=ndraws)
+m2.postpc  <- brms::pp_check(m2, ndraws=ndraws)
+m3.postpc  <- brms::pp_check(m3, ndraws=ndraws)
+m4.postpc  <- brms::pp_check(m4, ndraws=ndraws)
+
+(m1.postpc | m2.postpc) / (m3.postpc | m4.postpc)
+```
+
+```{r}
+brms::pp_check(m5, ndraws=ndraws)
+```
+
+
+The distribution of draws still encompasses the actually observed data and additionally grew closer to it (compared to the prior predictive check).
+This means that the coefficient distributions have improved and the model has learned.
+
+### Model Evaluation
+
+Finally, we evaluate the resulting model.
+
+```{r summary}
+summary(m5)
+```
+
+#### Fixed Effects
+
+First, we investigate the coefficients of fixed effects to see how well they align with the effect strength that we determined before.
+
+```{r fixed-effects}
+# obtain the fixed effects in the model
+m1.coefs.fixed <- data.frame(fixef(m1, summary = TRUE))
+# make the name of the factor (which was previously the index of the data frame) an explicit column
+m1.coefs.fixed <- cbind(factor = rownames(m1.coefs.fixed), m1.coefs.fixed)
+# add column identifying the model
+m1.coefs.fixed$model <- 'm1'
+
+m2.coefs.fixed <- data.frame(fixef(m2, summary = TRUE))
+m2.coefs.fixed <- cbind(factor = rownames(m2.coefs.fixed), m2.coefs.fixed)
+m2.coefs.fixed$model <- 'm2'
+
+m3.coefs.fixed <- data.frame(fixef(m3, summary = TRUE))
+m3.coefs.fixed <- cbind(factor = rownames(m3.coefs.fixed), m3.coefs.fixed)
+m3.coefs.fixed$model <- 'm3'
+
+m4.coefs.fixed <- data.frame(fixef(m4, summary = TRUE))
+m4.coefs.fixed <- cbind(factor = rownames(m4.coefs.fixed), m4.coefs.fixed)
+m4.coefs.fixed$model <- 'm4'
+
+m5.coefs.fixed <- data.frame(fixef(m5, summary = TRUE))
+m5.coefs.fixed <- cbind(factor = rownames(m5.coefs.fixed), m5.coefs.fixed)
+m5.coefs.fixed$model <- 'm5'
+
+coefs.fixed <- rbind(m1.coefs.fixed, m2.coefs.fixed, m3.coefs.fixed, m4.coefs.fixed, m5.coefs.fixed)
+
+#add a numeric column to the updated data frame
+rownames(coefs.fixed) <- 1:nrow(coefs.fixed)
+```
+
+```{r}
+coefs.fixed
+```
+
+
+Then we add a column to our data frame containing the actual effects defined by us where the names of the factors align with the output from the model.
+
+```{r effects-df-rename}
+d.effects.coefs <- cbind(factor = c(
+  'Intercept', 'treatmentTRUE', 'PID', 'treatmentTRUE:period.L', 'treatmentFALSE:period.L', 'period.L'
+  ), d.effects) %>% 
+  filter(factor %in% coefs.fixed$factor)
+```
+
+```{r}
+d.effects.coefs
+```
+
+
+Now, we can visualize the mean and confidence interval of the calculated coefficient distributions (black errorbars) and compare them to the actual effect defined by us (red dot).
+
+```{r fixed-effect-distributions}
+position.offset <- position_nudge(
+  y = ifelse(coefs.fixed$model == "m1", 0.3,
+             ifelse(coefs.fixed$model == "m2", 0.1,
+             ifelse(coefs.fixed$model == "m3", -0.1, 
+              ifelse(coefs.fixed$model == "m4", -0.3, -0.5))))
+)
+
+coefs.fixed %>% ggplot(aes(y = factor, color = model)) +
+  geom_point(aes(x = Estimate), position = position.offset) +
+  geom_errorbar(aes(xmin = Q2.5, xmax = Q97.5), position = position.offset,width = 0.15) +
+  geom_point(aes(x = Strength), data = d.effects.coefs, size = 3, color = "red") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
+  scale_y_discrete(limits=rev(c("Intercept", "treatmentTRUE", "period.L", "treatmentTRUE:period.L")))
+```
+
+#### Random Effects
+
+The random effect of the participant ID `(1|PID)` should model the `skill` value of each participant.
+We would expect that the intercept of the random effect equals the skill value times the skill effect.
+
+```{r pid-summary}
+PID.impact <- data.frame(ranef(m4)[1]$PID)
+```
+
+A scatter plot visualizes the distribution of $participants.skill \times e.skill$ against the mean intercept of each participant.
+
+```{r pid-skill-scatter}
+data.frame(
+  skill = participants.skill * e.skill,
+  PID.intercept = PID.impact$Estimate.Intercept
+) %>% 
+  ggplot(aes(x=skill, y=PID.intercept)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope=1)
+```
+
+We can quantify this correlation by calculating a correlation coefficient.
+Firstly, we determine whether the two distributions are normally distributed.
+
+```{r pid-skill-normal}
+shapiro.test(participants.skill)
+shapiro.test(PID.impact$Estimate.Intercept)
+```
+
+The Shapiro-Wilk tests suggests that both distributions are normal.
+This is as expected, since $participants.skill \sim \mathcal{N}(0, 1)$ and the intercepts per PID should resemble it.
+Consequently, we can calculate the Pearson correlation coefficient.
+
+```{r pid-skill-correlation}
+cor.test(x=participants$skill, y=PID.impact$Estimate.Intercept, method="pearson")
+```
+
+This confirms that the inclusion of a participant-level random effect `(1|PID)` adequately models the individual skill of a participant and factors it out from the relationship of interest.
