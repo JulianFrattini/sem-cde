@@ -99,6 +99,10 @@ observations <- participants %>%
   mutate(
     response = rnorm(1, e.baseline + e.treatment*treatment + e.learning*(period-1) + e.skill*skill + e.crossover.AB*(period-1)*(abs(group-2)), 0.3)
     #response = rnorm(1, e.baseline + e.treatment*treatment + e.learning*(period-1) + e.skill*skill + e.crossover.AB*(period-1)*(abs(group-2)) + e.crossover.BA*(period-1)*(group-1), 0.3)
+  ) %>% 
+  mutate(
+    period = factor(period, levels=1:2, ordered=TRUE),
+    group = factor(group, levels=1:2, ordered=FALSE)
   )
 ```
 
@@ -175,8 +179,9 @@ f1 <- response ~ 1 + treatment
 f2 <- response ~ 1 + treatment + period
 f3 <- response ~ 1 + treatment*period
 f4 <- response ~ 1 + treatment*period + (1|PID)
+f5 <- response ~ 1 + treatment*period + (1|group/PID)
 
-get_prior(f4, data=observations, family=gaussian)
+get_prior(f5, data=observations, family=gaussian)
 ```
 
 We select uninformative priors, which are mainly normal distributions centered around the mean 0 ($\mathcal{N}(0, 1)$).
@@ -290,6 +295,16 @@ m4 <-
   )
 ```
 
+
+```{r model5}
+m5 <-
+  brm(data = observations, family = gaussian, f5, prior = priors2,
+    iter = 4000, warmup = 1000, chains = 4, cores = 4,
+    seed = 4,
+    #file = "fits/m5"
+  )
+```
+
 Again, we perform a posterior predictive check to ensure that the predictions of the model are feasible.
 
 ```{r posterior-predictive-check}
@@ -301,6 +316,11 @@ m4.postpc  <- brms::pp_check(m4, ndraws=ndraws)
 (m1.postpc | m2.postpc) / (m3.postpc | m4.postpc)
 ```
 
+```{r}
+brms::pp_check(m5, ndraws=ndraws)
+```
+
+
 The distribution of draws still encompasses the actually observed data and additionally grew closer to it (compared to the prior predictive check).
 This means that the coefficient distributions have improved and the model has learned.
 
@@ -309,7 +329,7 @@ This means that the coefficient distributions have improved and the model has le
 Finally, we evaluate the resulting model.
 
 ```{r summary}
-summary(m4)
+summary(m5)
 ```
 
 #### Fixed Effects
@@ -336,20 +356,34 @@ m4.coefs.fixed <- data.frame(fixef(m4, summary = TRUE))
 m4.coefs.fixed <- cbind(factor = rownames(m4.coefs.fixed), m4.coefs.fixed)
 m4.coefs.fixed$model <- 'm4'
 
-coefs.fixed <- rbind(m1.coefs.fixed, m2.coefs.fixed, m3.coefs.fixed, m4.coefs.fixed)
+m5.coefs.fixed <- data.frame(fixef(m5, summary = TRUE))
+m5.coefs.fixed <- cbind(factor = rownames(m5.coefs.fixed), m5.coefs.fixed)
+m5.coefs.fixed$model <- 'm5'
+
+coefs.fixed <- rbind(m1.coefs.fixed, m2.coefs.fixed, m3.coefs.fixed, m4.coefs.fixed, m5.coefs.fixed)
 
 #add a numeric column to the updated data frame
 rownames(coefs.fixed) <- 1:nrow(coefs.fixed)
 ```
 
+```{r}
+coefs.fixed
+```
+
+
 Then we add a column to our data frame containing the actual effects defined by us where the names of the factors align with the output from the model.
 
 ```{r effects-df-rename}
 d.effects.coefs <- cbind(factor = c(
-  'Intercept', 'treatmentTRUE', 'PID', 'treatmentTRUE:period', 'treatmentFALSE:period', 'period'
+  'Intercept', 'treatmentTRUE', 'PID', 'treatmentTRUE:period.L', 'treatmentFALSE:period.L', 'period.L'
   ), d.effects) %>% 
   filter(factor %in% coefs.fixed$factor)
 ```
+
+```{r}
+d.effects.coefs
+```
+
 
 Now, we can visualize the mean and confidence interval of the calculated coefficient distributions (black errorbars) and compare them to the actual effect defined by us (red dot).
 
@@ -357,7 +391,8 @@ Now, we can visualize the mean and confidence interval of the calculated coeffic
 position.offset <- position_nudge(
   y = ifelse(coefs.fixed$model == "m1", 0.3,
              ifelse(coefs.fixed$model == "m2", 0.1,
-             ifelse(coefs.fixed$model == "m3", -0.1, -0.3)))
+             ifelse(coefs.fixed$model == "m3", -0.1, 
+              ifelse(coefs.fixed$model == "m4", -0.3, -0.5))))
 )
 
 coefs.fixed %>% ggplot(aes(y = factor, color = model)) +
@@ -365,7 +400,7 @@ coefs.fixed %>% ggplot(aes(y = factor, color = model)) +
   geom_errorbar(aes(xmin = Q2.5, xmax = Q97.5), position = position.offset,width = 0.15) +
   geom_point(aes(x = Strength), data = d.effects.coefs, size = 3, color = "red") +
   geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
-  scale_y_discrete(limits=rev(c("Intercept", "treatmentTRUE", "period", "treatmentTRUE:period")))
+  scale_y_discrete(limits=rev(c("Intercept", "treatmentTRUE", "period.L", "treatmentTRUE:period.L")))
 ```
 
 #### Random Effects
