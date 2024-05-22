@@ -1,0 +1,12 @@
+---
+title: "Assessing the State of Practice of addressing Threats to Validity in Crossover-Design Experiments: Interrater Agreement"
+author: "Anonymous Author"
+date: '2024-05-22'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This notebook calculates the inter-rater agreement of the two researchers that extracted data from eligible primary studies.

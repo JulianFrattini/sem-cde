@@ -8,9 +8,12 @@ This repository contains the following items:
 
 * data/ : directory for all raw data
   * state-of-practice/ : data connected to the evaluation of the state of practice
+    * `data-extraction.xlsx` : extracted data
     * `data-extraction-ira.xlsx` : extraction overlap for inter-rater agreement
 * src/ : directory for all code and scripts
   * `reproduction.Rmd` : reproduction of the study by Vegas et al.[^1]
+  * `sop-interrater-agreement.Rmd` : calculation of the inter-rater agreement of the data extraction
+  * `sop-visualization.Rmd` : visualization of the results from the data extraction
   
 ## Usage
 

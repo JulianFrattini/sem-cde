@@ -1,0 +1,121 @@
+---
+title: 'Assessing the State of Practice of addressing Threats to Validity in Crossover-Design Experiments: Visualizations'
+author: "Anonymous Author"
+date: '2024-05-22'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
+```
+
+This notebook visualizes the results from the data extraction phase of the study investigating the state of practice of addressing threats to validity in crossover-design experiments at analysis time.
+
+## Data
+
+```{r data-loading}
+data <- read_excel("../data/state-of-practice/data-extraction.xlsx", sheet="Extraction", skip=2)
+
+head(data)
+```
+
+Rename all columns where R does not parse the column name directly (i.e., replace dashes by dots).
+
+```{r data-renaming}
+data <- data %>% 
+  rename(all_of(c(
+    subject.number = "Subject- Number",
+    subject.type = "Subject-Type",
+
+    method = "Method",
+    test.type = "Test Type",
+    
+    availability.data = "Data-Availability",
+    availability.analysis = "Analysis-Availability"
+    )))
+```
+
+Cast data to its appropriate type
+
+```{r data-casting}
+cat.subjects <- c("Students", "Student Groups", "Practitioners", "Pracititioner Groups", "Mixed Groups", "Both", "Unknown", "Researchers", "Other")
+cat.threats <- c("Period", "Sequence", "Skill", "Carryover")
+cat.method <- c("NHST", "GLM", "GLMM", "GEE", "Other", "Unknown")
+cat.type <- c("Unpaired T", "Paired T", "Mann-Whitney U", "Kruskal-Wallis", "Wilcoxon signed-rank", "ANOVA", "Other")
+cat.addressal <- c("Modeled", "Stratified", "Isolated", "Acknowledged", "Neglected", "Ignored")
+cat.availability <- c("Proprietary", "Private", "Unavailable", "Broken", "Upon Request", "Reachable", "Open Source", "Archived")
+
+
+data <- data %>% 
+  mutate(
+    subject.type <- factor(subject.type, levels=cat.subjects, ordered=FALSE),
+    subject.number = as.numeric(subject.number),
+    
+    method <- factor(method, levels=cat.method, ordered=FALSE),
+    test.type <- factor(test.type, levels=cat.type, ordered=FALSE),
+    
+    Period <- factor(Period, levels=cat.addressal, ordered=TRUE),
+    Sequence <- factor(Sequence, levels=cat.addressal, ordered=TRUE),
+    Skill <- factor(Skill, levels=cat.addressal, ordered=TRUE),
+    Carryover <- factor(Carryover, levels=cat.addressal, ordered=TRUE),
+    
+    availability.data <- factor(availability.data, levels=cat.availability, ordered=TRUE),
+    availability.analysis <- factor(availability.analysis, levels=cat.availability, ordered=TRUE),
+  )
+```
+
+## Subjects
+
+```{r vis-subject-type}
+data %>% 
+  ggplot(aes(x=subject.type)) +
+  geom_bar()
+```
+
+```{r vis-subject-count}
+ggplot(data, aes(y=subject.number)) +
+  geom_boxplot() +
+  coord_flip()
+```
+
+## Analysis
+
+```{r vis-method}
+data %>% 
+  ggplot(aes(x=data$method)) +
+  geom_bar()
+```
+
+```{r vis-test-type}
+data %>% 
+  ggplot(aes(x=test.type)) +
+  geom_bar()
+```
+
+```{r vis-addressal}
+data %>% 
+  select(cat.threats) %>% 
+  pivot_longer(cols = everything(), names_to = "threat", values_to = "addressal") %>% 
+  count(threat, addressal) %>% 
+  ggplot(aes(threat, addressal)) +
+    geom_tile(aes(fill=n)) +
+    geom_text(aes(label=n))
+```
+
+
+## Material
+
+```{r vis-availability-data}
+data %>% 
+  ggplot(aes(x=availability.data)) +
+  geom_bar()
+```
+
+```{r vis-availability-analysis}
+data %>% 
+  ggplot(aes(x=availability.analysis)) +
+  geom_bar()
+```
