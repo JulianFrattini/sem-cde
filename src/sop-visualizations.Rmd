@@ -52,7 +52,7 @@ cat.availability <- c("Proprietary", "Private", "Unavailable", "Broken", "Upon R
 data <- data %>% 
   mutate(
     subject.type <- factor(subject.type, levels=cat.subjects, ordered=FALSE),
-    subject.number = as.numeric(subject.number),
+    subject.number = as.integer(subject.number),
     
     method <- factor(method, levels=cat.method, ordered=FALSE),
     test.type <- factor(test.type, levels=cat.type, ordered=FALSE),
@@ -96,7 +96,7 @@ The subject count visualizes the number of participants involved in the experime
 
 ```{r vis-subject-count}
 ggplot(data, aes(x=subject.number)) +
-  geom_boxplot() +
+  geom_boxplot(notch=TRUE, notchwidth=0.3, na.rm=TRUE) +
   labs(x="Number of Participants") +
   theme(axis.title.y=element_blank(),
         axis.text.y=element_blank(),
@@ -107,6 +107,12 @@ ggplot(data, aes(x=subject.number)) +
 ggsave(file='../figures/subject-count.pdf', device = "pdf",
        width = 14, height = 3, units = "cm")
 ```
+
+```{r stat-subject-count}
+median(data$subject.number, na.rm=TRUE)
+mean(data$subject.number, na.rm=TRUE)
+```
+
 
 ## Analysis
 
