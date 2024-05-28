@@ -192,6 +192,19 @@ ggsave(file='../figures/addressal.pdf', device = "pdf",
        width = 14, height = 9, units = "cm")
 ```
 
+Perfect addressal is when all four threats to validity are `modeled`.
+
+```{r perfect-addressal}
+data %>% 
+  filter(
+    Period == 'Modeled', 
+    Sequence == 'Modeled', 
+    Skill == 'Modeled', 
+    Carryover == 'Modeled', 
+  )
+```
+
+
 ## Material
 
 The material attributes represent how available the material (data and analysis scripts) are.
