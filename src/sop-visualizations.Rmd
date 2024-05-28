@@ -27,7 +27,7 @@ Rename all columns where R does not parse the column name directly (i.e., replac
 ```{r data-renaming}
 data <- data %>% 
   rename(all_of(c(
-    subject.number = "Subject- Number",
+    subject.number = "Subject-Number",
     subject.type = "Subject-Type",
 
     method = "Method",
@@ -41,10 +41,10 @@ data <- data %>%
 Cast data to its appropriate type
 
 ```{r data-casting}
-cat.subjects <- c("Students", "Student Groups", "Practitioners", "Pracititioner Groups", "Mixed Groups", "Both", "Unknown", "Researchers", "Other")
+cat.subjects <- c("Students", "Student Groups", "Practitioners", "Pracititioner Groups", "Both", "Mixed Groups", "Researchers", "Unknown", "Other")
 cat.threats <- c("Period", "Sequence", "Skill", "Carryover")
 cat.method <- c("NHST", "GLM", "GLMM", "GEE", "Other", "Unknown")
-cat.type <- c("Unpaired T", "Paired T", "Mann-Whitney U", "Kruskal-Wallis", "Wilcoxon signed-rank", "ANOVA", "Other")
+cat.type <- c("Unpaired T", "Paired T", "Mann-Whitney U", "Wilcoxon signed-rank", "ANOVA", "Kruskal-Wallis", "Other")
 cat.addressal <- c("Modeled", "Stratified", "Isolated", "Acknowledged", "Neglected", "Ignored")
 cat.availability <- c("Proprietary", "Private", "Unavailable", "Broken", "Upon Request", "Reachable", "Open Source", "Archived")
 
@@ -69,53 +69,169 @@ data <- data %>%
 
 ## Subjects
 
+The first group of attributes describes the subjects involved in the investigated experiments.
+The subject type describes the type of participants included in the experiment.
+
 ```{r vis-subject-type}
-data %>% 
-  ggplot(aes(x=subject.type)) +
-  geom_bar()
+n.per.subject.type <- data %>% 
+  group_by(subject.type) %>% 
+  tally() %>% 
+  mutate(
+    label.vjust = ifelse(n<3, -0.8, 1.5),
+    label.color = ifelse(n<3, "black", "white")
+    )
+  
+n.per.subject.type %>% 
+  ggplot(aes(x=factor(subject.type, level=cat.subjects), y=n)) +
+    geom_bar(stat="identity") +
+    geom_text(aes(label=n), vjust=n.per.subject.type$label.vjust, color=n.per.subject.type$label.color) +
+    labs(x = "Subject Type", y = "Count") +
+    theme(axis.text.x = element_text(angle=10))
+
+ggsave(file='../figures/subject-type.pdf', device = "pdf",
+       width = 14, height = 8, units = "cm")
 ```
 
+The subject count visualizes the number of participants involved in the experiment.
+
 ```{r vis-subject-count}
-ggplot(data, aes(y=subject.number)) +
+ggplot(data, aes(x=subject.number)) +
   geom_boxplot() +
-  coord_flip()
+  labs(x="Number of Participants") +
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(), 
+        panel.grid.major.y = element_blank(), 
+        panel.grid.minor.y = element_blank())
+
+ggsave(file='../figures/subject-count.pdf', device = "pdf",
+       width = 14, height = 3, units = "cm")
 ```
 
 ## Analysis
 
+The attribute group *Analysis* contains all attributes that characterize how the sample of primary studies analyzed the data obtained from their experiments.
+The method represents the type of statistical test performed by the authors.
+
+
 ```{r vis-method}
-data %>% 
-  ggplot(aes(x=data$method)) +
-  geom_bar()
+n.per.method <- data %>%
+  group_by(method) %>%
+  tally() %>%
+  mutate(
+    label.vjust = ifelse(n<3, -0.8, 1.5),
+    label.color = ifelse(n<3, "black", "white")
+    )
+
+n.per.method %>%
+  ggplot(aes(x=factor(method, level=cat.method), y=n)) +
+    geom_bar(stat="identity") +
+    geom_text(aes(label=n), vjust=n.per.method$label.vjust, color=n.per.method$label.color) +
+    labs(x = "Subject Type", y = "Count") +
+    theme(
+      axis.text.x = element_text(angle=0), 
+      panel.grid.minor.y = element_blank()
+    )
+
+ggsave(file='../figures/method.pdf', device = "pdf",
+       width = 14, height = 5, units = "cm")
 ```
+
+The test type applies only to experiments that were analyzed using a null-hypothesis significance test (`method=NHST`).
+It represents the test type in implies the assumptions of the authors.
 
 ```{r vis-test-type}
-data %>% 
-  ggplot(aes(x=test.type)) +
-  geom_bar()
+n.per.test <- data %>%
+  group_by(test.type) %>%
+  tally() %>%
+  mutate(
+    label.vjust = ifelse(n<3, -0.8, 1.5),
+    label.color = ifelse(n<3, "black", "white")
+    ) %>% 
+  filter(test.type != "NA")
+
+n.per.test %>%
+  ggplot(aes(x=factor(test.type, level=cat.type), y=n)) +
+    geom_bar(stat="identity") +
+    geom_text(aes(label=n), vjust=n.per.test$label.vjust, color=n.per.test$label.color) +
+    labs(x = "Subject Type", y = "Count") +
+    theme(
+      axis.text.x = element_text(angle=10), 
+      panel.grid.minor.y = element_blank()
+    )
+
+ggsave(file='../figures/test-type.pdf', device = "pdf",
+       width = 14, height = 7, units = "cm")
 ```
 
+The *addressal* attribute represents how the analyses addressed the threats to validity inherent to the crossover design.
+
 ```{r vis-addressal}
-data %>% 
+d.pivot <- data %>% 
   select(cat.threats) %>% 
   pivot_longer(cols = everything(), names_to = "threat", values_to = "addressal") %>% 
   count(threat, addressal) %>% 
-  ggplot(aes(threat, addressal)) +
-    geom_tile(aes(fill=n)) +
-    geom_text(aes(label=n))
-```
+  mutate(label.color = ifelse(n < 30, "white", "black"))
 
+d.pivot %>% 
+  ggplot(aes(
+    factor(threat, levels=cat.threats),
+    factor(addressal, levels=cat.addressal))
+  ) +
+    geom_tile(aes(fill=n)) +
+    geom_text(aes(label=n), color=d.pivot$label.color) +
+    labs(x = "Threats to Validity", y = "Types of Addressal", fill = "Count")
+
+ggsave(file='../figures/addressal.pdf', device = "pdf",
+       width = 14, height = 9, units = "cm")
+```
 
 ## Material
 
+The material attributes represent how available the material (data and analysis scripts) are.
+
 ```{r vis-availability-data}
-data %>% 
-  ggplot(aes(x=availability.data)) +
-  geom_bar()
+n.per.category <- data %>%
+  group_by(availability.data) %>%
+  tally() %>%
+  mutate(
+    label.vjust = ifelse(n<3, -0.8, 1.5),
+    label.color = ifelse(n<3, "black", "white")
+    )
+
+n.per.category %>%
+  ggplot(aes(x=factor(availability.data, level=cat.availability), y=n)) +
+    geom_bar(stat="identity") +
+    geom_text(aes(label=n), vjust=n.per.category$label.vjust, color=n.per.category$label.color) +
+    labs(x = "Subject Type", y = "Count") +
+    theme(
+      axis.text.x = element_text(angle=0), 
+      panel.grid.minor.y = element_blank()
+    )
+
+ggsave(file='../figures/availability-data.pdf', device = "pdf",
+        width = 14, height = 6, units = "cm")
 ```
 
 ```{r vis-availability-analysis}
-data %>% 
-  ggplot(aes(x=availability.analysis)) +
-  geom_bar()
+n.per.category <- data %>%
+  group_by(availability.analysis) %>%
+  tally() %>%
+  mutate(
+    label.vjust = ifelse(n<3, -0.8, 1.5),
+    label.color = ifelse(n<3, "black", "white")
+    )
+
+n.per.category %>%
+  ggplot(aes(x=factor(availability.analysis, level=cat.availability), y=n)) +
+    geom_bar(stat="identity") +
+    geom_text(aes(label=n), vjust=n.per.category$label.vjust, color=n.per.category$label.color) +
+    labs(x = "Subject Type", y = "Count") +
+    theme(
+      axis.text.x = element_text(angle=0), 
+      panel.grid.minor.y = element_blank()
+    )
+
+ggsave(file='../figures/availability-analysis.pdf', device = "pdf",
+        width = 14, height = 6, units = "cm")
 ```
