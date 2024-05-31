@@ -5,8 +5,132 @@ date: '2024-05-22'
 output: html_document
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
 ```
 
 This notebook calculates the inter-rater agreement of the two researchers that extracted data from eligible primary studies.
+
+## Data
+
+```{r data-loading}
+data <- read_excel("../data/state-of-practice/data-extraction-ira.xlsx", sheet="Extraction", skip=2)
+overlap <- read_excel("../data/state-of-practice/data-extraction-ira.xlsx", sheet="Overlap", skip=2)
+
+head(data)
+```
+
+```{r}
+cat.subjects <- c("Students", "Student Groups", "Practitioners", "Pracititioner Groups", "Both", "Mixed Groups", "Researchers", "Unknown", "Other")
+cat.threats <- c("Period", "Sequence", "Skill", "Carryover")
+cat.method <- c("NHST", "GLM", "GLMM", "GEE", "Other", "Unknown")
+cat.type <- c("Unpaired T", "Paired T", "Mann-Whitney U", "Wilcoxon signed-rank", "ANOVA", "Kruskal-Wallis", "Other")
+cat.addressal <- c("Modeled", "Stratified", "Isolated", "Acknowledged", "Neglected", "Ignored")
+cat.availability <- c("Proprietary", "Private", "Unavailable", "Broken", "Upon Request", "Reachable", "Open Source", "Archived")
+
+clean_data <- function(df) {
+  df_cleaned <-  df %>% 
+    rename(all_of(c(
+      id = "Paper-ID",
+      subject.number = "Subject-Number",
+      subject.type = "Subject-Type",
+  
+      method = "Method",
+      test.type = "Test Type",
+      
+      availability.data = "Data-Availability",
+      availability.analysis = "Analysis-Availability"
+      ))
+    ) %>% 
+  mutate(
+    subject.type <- factor(subject.type, levels=cat.subjects, ordered=FALSE),
+    subject.number = as.integer(subject.number),
+    
+    method <- factor(method, levels=cat.method, ordered=FALSE),
+    test.type <- factor(test.type, levels=cat.type, ordered=FALSE),
+    
+    Period <- factor(Period, levels=cat.addressal, ordered=TRUE),
+    Sequence <- factor(Sequence, levels=cat.addressal, ordered=TRUE),
+    Skill <- factor(Skill, levels=cat.addressal, ordered=TRUE),
+    Carryover <- factor(Carryover, levels=cat.addressal, ordered=TRUE),
+    
+    availability.data <- factor(availability.data, levels=cat.availability, ordered=TRUE),
+    availability.analysis <- factor(availability.analysis, levels=cat.availability, ordered=TRUE),
+  )
+  return(df_cleaned)
+}
+```
+
+```{r}
+data <- clean_data(data)
+overlap <- clean_data(overlap)
+```
+
+```{r}
+rating1 <- data %>% 
+  filter(id %in% overlap$id)
+```
+
+## Comparison
+
+### Numerical
+
+```{r}
+cor(rating1$subject.number, overlap$subject.number, use='complete.obs', method='pearson')
+```
+
+### Categorical
+
+```{r}
+col.cat <- c("subject.type", "method", "test.type", "Period", "Sequence", "Skill", "Carryover", "availability.data", "availability.analysis")
+```
+
+```{r}
+# Function to calculate Bennett's S-Score from two lists of categorical values
+bennett_s_score <- function(rater1, rater2) {
+  # Check if both lists have the same length
+  if (length(rater1) != length(rater2)) {
+    stop("Both rater lists must have the same length.")
+  }
+  
+  # Create a confusion matrix
+  conf_matrix <- table(rater1, rater2)
+  
+  # Number of categories
+  k <- nrow(conf_matrix)
+  
+  # Total number of observations
+  n <- sum(conf_matrix)
+  
+  # Observed agreement (Po)
+  po <- sum(diag(conf_matrix)) / n
+  
+  # Expected agreement by chance (Pc)
+  pc <- 1 / k
+  
+  # Bennett's S-Score
+  s_score <- (po - pc) / (1 - pc)
+  
+  return(s_score)
+}
+```
+
+```{r}
+agreement <- c()
+for (col in col.cat) {
+  r1 <- rating1[[col]]
+  r2 <- overlap[[col]]
+  score <- bennett_s_score(r1, r2)
+  agreement <- append(agreement, score)
+}
+agreement
+```
+
+```{r}
+mean(agreement)
+```
+
