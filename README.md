@@ -55,5 +55,17 @@ To replicate the study which this replication package refers to, conduct the fol
 1. Review the `guidelines-inclusion.pdf` and apply them to a set of primary studies. You can use the `data-inclusion.xslx` sheet as inspiration for collecting the data,
 2. Review the `guidelines-extraction.pdf` and apply them to the included primary studies. You can use the `data-extraction.xslx` sheet as inspiration for collecting the data,
 3. Use the `sop-visualization.Rmd` to generate figures from the extracted data.
+
+## System Requirements
+
+To view and edit `.graphml` files, install a graph editor like [yEd](https://www.yworks.com/products/yed).
+To view and edit `.xlsx` files, install a spreadsheet program like [Microsoft Excel](https://www.microsoft.com/en/microsoft-365/excel).
+To view `.pdf` files, install a PDF reader like [Adobe Acrobat](https://www.adobe.com/en/acrobat/pdf-reader.html).
+
+In order to run the `.Rmd` notebooks in the *src* folder, ensure that you have [R](https://ftp.acc.umu.se/mirror/CRAN/) (version > 4.0) and [RStudio](https://posit.co/download/rstudio-desktop/#download) installed on your machine. 
+Then, conduct the following steps:
+
+1. Install all required packages via `install.packages(c("tidyverse", "foreign", "lme4", "lmerTest", "readxl"))`.
+2. Open the `b4c.Rproj` file with RStudio, which will setup the environment correctly.
   
 [^1]: Vegas, S., Apa, C., & Juristo, N. (2015). Crossover designs in software engineering experiments: Benefits and perils. IEEE Transactions on Software Engineering, 42(2), 120-135.
