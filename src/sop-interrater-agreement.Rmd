@@ -5,7 +5,6 @@ date: '2024-05-22'
 output: html_document
 ---
 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -17,14 +16,22 @@ This notebook calculates the inter-rater agreement of the two researchers that e
 
 ## Data
 
+The data is located in the `data-extraction-ira.xlsx` file (a snapshot of `data-extraction.xlsx` prior to any harmonization based on the discussions).
+Each of the papers extracted from by both raters is assigned to one of the raters.
+That rater contributed their extraction in the "Extraction" sheet of that file, the over one in the "Overlap" sheet.
+
 ```{r data-loading}
 data <- read_excel("../data/state-of-practice/data-extraction-ira.xlsx", sheet="Extraction", skip=2)
 overlap <- read_excel("../data/state-of-practice/data-extraction-ira.xlsx", sheet="Overlap", skip=2)
-
-head(data)
 ```
 
-```{r}
+The following method performs a data cleaning process on a data frame. 
+It ensures two aspects:
+
+1. Columns of the data frame are renamed to R-conform labels (e.g., `test.type` instead of "Test-Type").
+2. Columns of the data frame are cast to the appropriate data type.
+
+```{r data-cleaning-function}
 cat.subjects <- c("Students", "Student Groups", "Practitioners", "Pracititioner Groups", "Both", "Mixed Groups", "Researchers", "Unknown", "Other")
 cat.threats <- c("Period", "Sequence", "Skill", "Carryover")
 cat.method <- c("NHST", "GLM", "GLMM", "GEE", "Other", "Unknown")
@@ -65,61 +72,72 @@ clean_data <- function(df) {
 }
 ```
 
-```{r}
+When executing the data cleaning function, R will raise warnings that some `NAs introduced by coercion`.
+This is expected behavior, as the column cast to integers (`subject.numnber`) can contain `NA` values.
+
+```{r data-cleaning-execution}
 data <- clean_data(data)
 overlap <- clean_data(overlap)
 ```
 
-```{r}
+Finally, limit the sheet containing the full data ("Extraction") to those entries that were overlapped by a second rater.
+
+```{r data-filtering}
 rating1 <- data %>% 
   filter(id %in% overlap$id)
+
+rating1$id
 ```
 
-## Comparison
+## Inter-Rater Agreement Calculation
+
+This section contains the calculation of the inter-rater agreement between the two raters.
+We apply different metrics to different data types.
 
 ### Numerical
 
-```{r}
+We assess the one numerical attribute (`subject.number`) using Pearson's correlation coefficient (PCC).
+
+```{r subject-number-pcc}
 cor(rating1$subject.number, overlap$subject.number, use='complete.obs', method='pearson')
 ```
 
+A PCC value of 1.0 shows perfect agreement between the two raters.
+The subject number (i.e., the number of participants involved in an experiment) is clear to extract from any manuscript.
+
 ### Categorical
 
-```{r}
+The following columns contain categorical data and, therefore, must be assessed in a different way.
+
+```{r categorical-columns}
 col.cat <- c("subject.type", "method", "test.type", "Period", "Sequence", "Skill", "Carryover", "availability.data", "availability.analysis")
 ```
 
-```{r}
-# Function to calculate Bennett's S-Score from two lists of categorical values
+We chose to calculate Bennett's S-score^[Bennett, E. M., Alpert, R., & Goldstein, A. C. (1954). Communications through limited-response questioning. Public Opinion Quarterly, 18(3), 303-308.] since it is robust against agreement by chance but also does not assume equal marginal distributions.
+The following method calculates Bennett's S-score for two (equal-sized) lists of ratings.
+
+```{r bennetts-s-score}
 bennett_s_score <- function(rater1, rater2) {
-  # Check if both lists have the same length
   if (length(rater1) != length(rater2)) {
     stop("Both rater lists must have the same length.")
   }
   
-  # Create a confusion matrix
   conf_matrix <- table(rater1, rater2)
   
-  # Number of categories
   k <- nrow(conf_matrix)
-  
-  # Total number of observations
   n <- sum(conf_matrix)
   
-  # Observed agreement (Po)
   po <- sum(diag(conf_matrix)) / n
-  
-  # Expected agreement by chance (Pc)
   pc <- 1 / k
   
-  # Bennett's S-Score
   s_score <- (po - pc) / (1 - pc)
-  
   return(s_score)
 }
 ```
 
-```{r}
+We calculate the inter-rater agreement via Bennett's S-score for each column containing categorical data.
+
+```{r interrater-agreement}
 agreement <- c()
 for (col in col.cat) {
   r1 <- rating1[[col]]
@@ -130,7 +148,10 @@ for (col in col.cat) {
 agreement
 ```
 
-```{r}
+Finally, we compute the average S-score over all columns.
+
+```{r avg-interrater-agreement}
 mean(agreement)
 ```
 
+The average S-score ensures sufficient confidence in the reliability of the data extraction.
