@@ -13,8 +13,11 @@ library(readxl)
 ```
 
 This notebook visualizes the results from the data extraction phase of the study investigating the state of practice of addressing threats to validity in crossover-design experiments at analysis time.
+All figures are stored in the `figures/` sub-directory.
 
 ## Data
+
+Firstly, we load the raw data from the `data-extraction.xlsx` file.
 
 ```{r data-loading}
 data <- read_excel("../data/state-of-practice/data-extraction.xlsx", sheet="Extraction", skip=2)
@@ -22,11 +25,13 @@ data <- read_excel("../data/state-of-practice/data-extraction.xlsx", sheet="Extr
 head(data)
 ```
 
-Rename all columns where R does not parse the column name directly (i.e., replace dashes by dots).
+Then, we rename all columns to R-appropriate names (i.e., replace dashes by dots, e.g., `id` instead of "Paper-ID").
 
 ```{r data-renaming}
 data <- data %>% 
   rename(all_of(c(
+    id = "Paper-ID",
+    
     subject.number = "Subject-Number",
     subject.type = "Subject-Type",
 
@@ -38,16 +43,16 @@ data <- data %>%
     )))
 ```
 
-Cast data to its appropriate type
+Additionally, we cast columns to their appropriate data type.
+The warning that `NAs introduced by coercion` is expected, as the column cast to integer values (`subject.number`) can contain NA values.
 
 ```{r data-casting}
 cat.subjects <- c("Students", "Student Groups", "Practitioners", "Pracititioner Groups", "Both", "Mixed Groups", "Researchers", "Unknown", "Other")
 cat.threats <- c("Period", "Sequence", "Skill", "Carryover")
 cat.method <- c("NHST", "GLM", "GLMM", "GEE", "Other", "Unknown")
-cat.type <- c("Unpaired T", "Paired T", "Mann-Whitney U", "Wilcoxon signed-rank", "ANOVA", "Kruskal-Wallis", "Other")
+cat.type <- c("Unpaired T", "Paired T", "Mann-Whitney U", "Wilcoxon signed-rank", "ANOVA", "ANOVA-type Statistics", "Kruskal-Wallis", "Other")
 cat.addressal <- c("Modeled", "Stratified", "Isolated", "Acknowledged", "Neglected", "Ignored")
 cat.availability <- c("Proprietary", "Private", "Unavailable", "Broken", "Upon Request", "Reachable", "Open Source", "Archived")
-
 
 data <- data %>% 
   mutate(
@@ -67,7 +72,12 @@ data <- data %>%
   )
 ```
 
-## Subjects
+## Visualization
+
+This section contains the generation and storage of figures from the loaded data. 
+Each subsection addresses one of the attribute groups.
+
+### Subjects
 
 The first group of attributes describes the subjects involved in the investigated experiments.
 The subject type describes the type of participants included in the experiment.
@@ -108,17 +118,26 @@ ggsave(file='../figures/subject-count.pdf', device = "pdf",
        width = 14, height = 3, units = "cm")
 ```
 
+Additionally, we determine the mean and median number of subjects involved in the experiments.
+
 ```{r stat-subject-count}
 median(data$subject.number, na.rm=TRUE)
 mean(data$subject.number, na.rm=TRUE)
+```
+
+Additionally, identify all studies where the subject number was `NA`.
+
+```{r na-subject-count}
+data %>% 
+  filter(is.na(subject.number)) %>% 
+  select(id, subject.number, subject.type)
 ```
 
 
 ## Analysis
 
 The attribute group *Analysis* contains all attributes that characterize how the sample of primary studies analyzed the data obtained from their experiments.
-The method represents the type of statistical test performed by the authors.
-
+The `method` represents the type of statistical test performed by the authors.
 
 ```{r vis-method}
 n.per.method <- data %>%
@@ -133,7 +152,7 @@ n.per.method %>%
   ggplot(aes(x=factor(method, level=cat.method), y=n)) +
     geom_bar(stat="identity") +
     geom_text(aes(label=n), vjust=n.per.method$label.vjust, color=n.per.method$label.color) +
-    labs(x = "Subject Type", y = "Count") +
+    labs(x = "Method", y = "Count") +
     theme(
       axis.text.x = element_text(angle=0), 
       panel.grid.minor.y = element_blank()
@@ -143,7 +162,7 @@ ggsave(file='../figures/method.pdf', device = "pdf",
        width = 14, height = 5, units = "cm")
 ```
 
-The test type applies only to experiments that were analyzed using a null-hypothesis significance test (`method=NHST`).
+The `test.type` applies only to experiments that were analyzed using a null-hypothesis significance test (`method=NHST`).
 It represents the test type in implies the assumptions of the authors.
 
 ```{r vis-test-type}
@@ -160,7 +179,7 @@ n.per.test %>%
   ggplot(aes(x=factor(test.type, level=cat.type), y=n)) +
     geom_bar(stat="identity") +
     geom_text(aes(label=n), vjust=n.per.test$label.vjust, color=n.per.test$label.color) +
-    labs(x = "Subject Type", y = "Count") +
+    labs(x = "Test Type", y = "Count") +
     theme(
       axis.text.x = element_text(angle=10), 
       panel.grid.minor.y = element_blank()
@@ -170,7 +189,7 @@ ggsave(file='../figures/test-type.pdf', device = "pdf",
        width = 14, height = 7, units = "cm")
 ```
 
-The *addressal* attribute represents how the analyses addressed the threats to validity inherent to the crossover design.
+The `addressal` attribute represents how the analyses addressed the threats to validity inherent to the crossover design.
 
 ```{r vis-addressal}
 d.pivot <- data %>% 
@@ -192,7 +211,7 @@ ggsave(file='../figures/addressal.pdf', device = "pdf",
        width = 14, height = 9, units = "cm")
 ```
 
-Perfect addressal is when all four threats to validity are `modeled`.
+Identify all papers that contain a perfect addressal.^[Perfect addressal is when all four threats to validity are `modeled`]
 
 ```{r perfect-addressal}
 data %>% 
@@ -204,13 +223,15 @@ data %>%
   )
 ```
 
-
 ## Material
 
 The material attributes represent how available the material (data and analysis scripts) are.
+Note that these attributes are analyzed per publication, not per experiment, since the material connected with the publications in our sample were always per publication, not per experiment.
 
 ```{r vis-availability-data}
-n.per.category <- data %>%
+n.per.category <- data %>% 
+  select(id, availability.data) %>% 
+  distinct() %>%
   group_by(availability.data) %>%
   tally() %>%
   mutate(
@@ -222,7 +243,7 @@ n.per.category %>%
   ggplot(aes(x=factor(availability.data, level=cat.availability), y=n)) +
     geom_bar(stat="identity") +
     geom_text(aes(label=n), vjust=n.per.category$label.vjust, color=n.per.category$label.color) +
-    labs(x = "Subject Type", y = "Count") +
+    labs(x = "Degree of Availability", y = "Count") +
     theme(
       axis.text.x = element_text(angle=0), 
       panel.grid.minor.y = element_blank()
@@ -233,7 +254,9 @@ ggsave(file='../figures/availability-data.pdf', device = "pdf",
 ```
 
 ```{r vis-availability-analysis}
-n.per.category <- data %>%
+n.per.category <- data %>% 
+  select(id, availability.analysis) %>% 
+  distinct() %>%
   group_by(availability.analysis) %>%
   tally() %>%
   mutate(
@@ -245,7 +268,7 @@ n.per.category %>%
   ggplot(aes(x=factor(availability.analysis, level=cat.availability), y=n)) +
     geom_bar(stat="identity") +
     geom_text(aes(label=n), vjust=n.per.category$label.vjust, color=n.per.category$label.color) +
-    labs(x = "Subject Type", y = "Count") +
+    labs(x = "Degree of Availability", y = "Count") +
     theme(
       axis.text.x = element_text(angle=0), 
       panel.grid.minor.y = element_blank()

@@ -24,8 +24,6 @@ Since the data cannot be made public, it is not contained in this repository and
 
 ```{r data-loading}
 data <- read.spss("../data/tse-2016-vegas/data.sav", to.data.frame = TRUE)
-
-head(data)
 ```
 
 ## Data Visualization
@@ -83,7 +81,7 @@ The obtained values are very close to the ones reported in the manuscript.
 wilcox.test(x=data.paired$BT, y=data.paired$EP, paired=FALSE)
 ```
 
-The authors of the original paper report a asymptotic significance value of 0.267, which is very close to the one we calculate.
+The authors of the original paper report an asymptotic significance value of 0.267, which is very close to the one we calculate.
 
 ### Incorrect Data Analysis: Omitting Period, Sequence and Carryover (Section 7.4.2)
 
