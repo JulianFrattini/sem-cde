@@ -205,7 +205,8 @@ d.pivot %>%
   ) +
     geom_tile(aes(fill=n)) +
     geom_text(aes(label=n), color=d.pivot$label.color) +
-    labs(x = "Threats to Validity", y = "Types of Addressal", fill = "Count")
+    labs(x = "Threats to Validity", y = "Types of Addressal", fill = "Count") +
+    scale_x_discrete(labels=c("Maturation/\nexhaustion", "Optimal\nSequence", "Subject\nVariability", "Carryover"))
 
 ggsave(file='../figures/addressal.pdf', device = "pdf",
        width = 14, height = 9, units = "cm")
