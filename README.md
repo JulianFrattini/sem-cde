@@ -3,7 +3,7 @@
 This repository contains the replication package of the study where we investigate the state of practice of analyzing data obtained from crossover design experiments in software engineering research.
 The investigation serves as a reflection on the impact of the guidelines written by Vegas et al.[^1]
 
-## Authors and Contact
+## Authors and Reference
 
 This repository was procured by the following researchers (the * marks the corresponding author):
 
@@ -13,16 +13,16 @@ This repository was procured by the following researchers (the * marks the corre
 | Davide Fucci | Blekinge Institute of Technology | |
 | Sira Vegas | Universidad Politécnica de Madrid | |
 
-Cite this work as: _Frattini, J., Fucci, D., & Vegas, S. (2024). Crossover Designs in Software Engineering Experiments: Review of the State of Analysis. In 2024 ACM/IEEE International Symposium on Empirical Software Engineering and Measurement (ESEM)._
+Cite this work as: _Frattini, J., Fucci, D., & Vegas, S. (2024). Crossover Designs in Software Engineering Experiments: Review of the State of Analysis. In 2024 ACM/IEEE International Symposium on Empirical Software Engineering and Measurement (ESEM). ACM._
 
 ```bibtex
 @inproceedings{frattini2024crossover,
   title={Crossover Designs in Software Engineering Experiments: Review of the State of Analysis},
   author={Frattini, Julian and Fucci, Davide and Vegas, Sira},
   booktitle={2024 ACM/IEEE International Symposium on Empirical Software Engineering and Measurement (ESEM)},
-  year={2024}
+  year={2024},
+  organization={ACM}
 }
-
 ```
 
 ## Structure
