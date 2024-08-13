@@ -1,5 +1,7 @@
 # Crossover Designs in Software Engineering Experiments: State of Practice
 
+[![GitHub](https://img.shields.io/github/license/JulianFrattini/sem-cde)](./LICENSE)
+
 This repository contains the replication package of the study where we investigate the state of practice of analyzing data obtained from crossover design experiments in software engineering research.
 The investigation serves as a reflection on the impact of the guidelines written by Vegas et al.[^1]
 
@@ -89,5 +91,11 @@ Then, conduct the following steps:
 
 1. Install all required packages via `install.packages(c("tidyverse", "foreign", "lme4", "lmerTest", "readxl"))`.
 2. Open the `b4c.Rproj` file with RStudio, which will setup the environment correctly.
+
+## License
+
+Copyright © 2024 Julian Frattini.
+
+This work is licensed under the [MIT License](./LICENSE).
   
 [^1]: Vegas, S., Apa, C., & Juristo, N. (2015). Crossover designs in software engineering experiments: Benefits and perils. IEEE Transactions on Software Engineering, 42(2), 120-135.
