@@ -1,6 +1,7 @@
 # Crossover Designs in Software Engineering Experiments: State of Practice
 
 [![GitHub](https://img.shields.io/github/license/JulianFrattini/sem-cde)](./LICENSE)
+[![DOI](https://zenodo.org/badge/769027936.svg)](https://zenodo.org/doi/10.5281/zenodo.13312638)
 
 This repository contains the replication package of the study where we investigate the state of practice of analyzing data obtained from crossover design experiments in software engineering research.
 The investigation serves as a reflection on the impact of the guidelines written by Vegas et al.[^1]
