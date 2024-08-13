@@ -77,26 +77,54 @@ data <- data %>%
 This section contains the generation and storage of figures from the loaded data. 
 Each subsection addresses one of the attribute groups.
 
+```{r bar-plot-visualization}
+#' Visualize the distribution of categorical values in a column of the data dataframe 
+#'
+#' @param column The name of the columns as a string.
+#' @param levels An ordered list of values in that column.
+#' @param label_tilt Boolean (true if the labels should be tilted by 10 degrees to avoid overlapping)
+#' @param ignore Column value to filter out
+#' @param per_study Boolean (true if values are counted per study, not per experiment)
+#' @returns A ggplot bar chart with values written into/onto each bar 
+#' @examples
+#' bar_chart_ordered("subject.type", cat.subjects)
+bar_chart_ordered <- function(column, levels, label_tilt=FALSE, ignore="", per_study=FALSE) {
+  d <- data
+  if(per_study) {
+    d <- data %>% 
+      select(id, !!sym(column)) %>%
+      distinct()
+  }
+  
+  n.per.category <- d %>% 
+    group_by(!!sym(column)) %>% 
+    tally() %>% 
+    mutate(
+      label.vjust = ifelse(n<3, -0.8, 1.5),
+      label.color = ifelse(n<3, "black", "white")
+      ) %>% 
+    filter(!!sym(column) != ignore)
+    
+  plt <- n.per.category %>%
+    ggplot(aes(x=factor(!!sym(column), level=levels), y=n)) +
+      geom_bar(stat="identity") +
+      geom_text(aes(label=n), vjust=n.per.category$label.vjust, color=n.per.category$label.color) +
+      labs(x = "Subject Type", y = "Count") +
+      theme(axis.text.x = element_text(angle=ifelse(label_tilt, 10, 0)))
+  
+  return(plt)
+}
+```
+
+
 ### Subjects
 
 The first group of attributes describes the subjects involved in the investigated experiments.
 The subject type describes the type of participants included in the experiment.
 
+
 ```{r vis-subject-type}
-n.per.subject.type <- data %>% 
-  group_by(subject.type) %>% 
-  tally() %>% 
-  mutate(
-    label.vjust = ifelse(n<3, -0.8, 1.5),
-    label.color = ifelse(n<3, "black", "white")
-    )
-  
-n.per.subject.type %>% 
-  ggplot(aes(x=factor(subject.type, level=cat.subjects), y=n)) +
-    geom_bar(stat="identity") +
-    geom_text(aes(label=n), vjust=n.per.subject.type$label.vjust, color=n.per.subject.type$label.color) +
-    labs(x = "Subject Type", y = "Count") +
-    theme(axis.text.x = element_text(angle=10))
+bar_chart_ordered("subject.type", cat.subjects, TRUE)
 
 ggsave(file='../figures/subject-type.pdf', device = "pdf",
        width = 14, height = 8, units = "cm")
@@ -140,23 +168,7 @@ The attribute group *Analysis* contains all attributes that characterize how the
 The `method` represents the type of statistical test performed by the authors.
 
 ```{r vis-method}
-n.per.method <- data %>%
-  group_by(method) %>%
-  tally() %>%
-  mutate(
-    label.vjust = ifelse(n<3, -0.8, 1.5),
-    label.color = ifelse(n<3, "black", "white")
-    )
-
-n.per.method %>%
-  ggplot(aes(x=factor(method, level=cat.method), y=n)) +
-    geom_bar(stat="identity") +
-    geom_text(aes(label=n), vjust=n.per.method$label.vjust, color=n.per.method$label.color) +
-    labs(x = "Method", y = "Count") +
-    theme(
-      axis.text.x = element_text(angle=0), 
-      panel.grid.minor.y = element_blank()
-    )
+bar_chart_ordered("method", cat.method)
 
 ggsave(file='../figures/method.pdf', device = "pdf",
        width = 14, height = 5, units = "cm")
@@ -166,24 +178,7 @@ The `test.type` applies only to experiments that were analyzed using a null-hypo
 It represents the test type in implies the assumptions of the authors.
 
 ```{r vis-test-type}
-n.per.test <- data %>%
-  group_by(test.type) %>%
-  tally() %>%
-  mutate(
-    label.vjust = ifelse(n<3, -0.8, 1.5),
-    label.color = ifelse(n<3, "black", "white")
-    ) %>% 
-  filter(test.type != "NA")
-
-n.per.test %>%
-  ggplot(aes(x=factor(test.type, level=cat.type), y=n)) +
-    geom_bar(stat="identity") +
-    geom_text(aes(label=n), vjust=n.per.test$label.vjust, color=n.per.test$label.color) +
-    labs(x = "Test Type", y = "Count") +
-    theme(
-      axis.text.x = element_text(angle=10), 
-      panel.grid.minor.y = element_blank()
-    )
+bar_chart_ordered("test.type", cat.type, TRUE, ignore="NA")
 
 ggsave(file='../figures/test-type.pdf', device = "pdf",
        width = 14, height = 7, units = "cm")
@@ -230,50 +225,14 @@ The material attributes represent how available the material (data and analysis 
 Note that these attributes are analyzed per publication, not per experiment, since the material connected with the publications in our sample were always per publication, not per experiment.
 
 ```{r vis-availability-data}
-n.per.category <- data %>% 
-  select(id, availability.data) %>% 
-  distinct() %>%
-  group_by(availability.data) %>%
-  tally() %>%
-  mutate(
-    label.vjust = ifelse(n<3, -0.8, 1.5),
-    label.color = ifelse(n<3, "black", "white")
-    )
-
-n.per.category %>%
-  ggplot(aes(x=factor(availability.data, level=cat.availability), y=n)) +
-    geom_bar(stat="identity") +
-    geom_text(aes(label=n), vjust=n.per.category$label.vjust, color=n.per.category$label.color) +
-    labs(x = "Degree of Availability", y = "Count") +
-    theme(
-      axis.text.x = element_text(angle=0), 
-      panel.grid.minor.y = element_blank()
-    )
+bar_chart_ordered("availability.data", cat.availability, per_study = TRUE)
 
 ggsave(file='../figures/availability-data.pdf', device = "pdf",
-        width = 14, height = 6, units = "cm")
+         width = 14, height = 6, units = "cm")
 ```
 
 ```{r vis-availability-analysis}
-n.per.category <- data %>% 
-  select(id, availability.analysis) %>% 
-  distinct() %>%
-  group_by(availability.analysis) %>%
-  tally() %>%
-  mutate(
-    label.vjust = ifelse(n<3, -0.8, 1.5),
-    label.color = ifelse(n<3, "black", "white")
-    )
-
-n.per.category %>%
-  ggplot(aes(x=factor(availability.analysis, level=cat.availability), y=n)) +
-    geom_bar(stat="identity") +
-    geom_text(aes(label=n), vjust=n.per.category$label.vjust, color=n.per.category$label.color) +
-    labs(x = "Degree of Availability", y = "Count") +
-    theme(
-      axis.text.x = element_text(angle=0), 
-      panel.grid.minor.y = element_blank()
-    )
+bar_chart_ordered("availability.analysis", cat.availability, per_study = TRUE)
 
 ggsave(file='../figures/availability-analysis.pdf', device = "pdf",
         width = 14, height = 6, units = "cm")
