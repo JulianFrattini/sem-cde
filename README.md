@@ -2,6 +2,7 @@
 
 [![GitHub](https://img.shields.io/github/license/JulianFrattini/sem-cde)](./LICENSE)
 [![DOI](https://zenodo.org/badge/769027936.svg)](https://zenodo.org/doi/10.5281/zenodo.13312638)
+[![arXiv](https://img.shields.io/badge/arXiv-2408.07594-b31b1b.svg)](https://arxiv.org/abs/2408.07594)
 
 This repository contains the replication package of the study where we investigate the state of practice of analyzing data obtained from crossover design experiments in software engineering research.
 The investigation serves as a reflection on the impact of the guidelines written by Vegas et al.[^1]
